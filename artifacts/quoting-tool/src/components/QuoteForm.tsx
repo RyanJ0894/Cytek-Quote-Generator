@@ -6,14 +6,14 @@ import { motion, AnimatePresence } from "framer-motion";
 import { 
   Building2, User, MapPin, Search, 
   Settings2, Plus, Trash2, FileText, 
-  FileBox, Info, Calculator, Loader2, ChevronDown
+  FileBox, Calculator, Loader2, ChevronDown
 } from "lucide-react";
 
 import { cn, formatCurrency } from "@/lib/utils";
 import { Autocomplete } from "./Autocomplete";
 import { useToast } from "@/hooks/use-toast";
+import type { ParsedUploadResult } from "./ExcelUpload";
 
-// Assuming we import these from the generated workspace package
 import { 
   useListSerials, 
   useLookupAsset, 
@@ -59,12 +59,82 @@ const SERVICE_TYPES = [
   "Other"
 ];
 
-export function QuoteForm() {
+interface QuoteFormProps {
+  parsedData?: ParsedUploadResult | null;
+}
+
+// Merge the two sections from parsed Excel: for "Service and Parts", service section drives
+// customer info and service items, parts section drives the parts list. For other types, use
+// whichever section has data.
+function buildInitialValues(parsed: ParsedUploadResult): Partial<QuoteFormValues> {
+  const qt = parsed.quoteType.toLowerCase();
+  const isPartsOnly = qt.includes("parts only") || qt === "parts";
+  const isServiceOnly = qt.includes("service only") || qt === "service";
+
+  const primary = isPartsOnly ? parsed.partsQuote : parsed.serviceQuote;
+  const secondary = isPartsOnly ? parsed.serviceQuote : parsed.partsQuote;
+
+  // Use primary section for customer info; fall back to secondary if primary is empty
+  const customerName = primary.customerName || secondary.customerName;
+  const serialNumber = primary.serialNumber || secondary.serialNumber;
+  const facilityName = primary.facilityName || secondary.facilityName;
+  const address = primary.address || secondary.address;
+  const contractType = primary.contractType || secondary.contractType;
+
+  // Service items come from service section (first part is treated as the service type)
+  const serviceParts = parsed.serviceQuote.parts;
+  const partsParts = parsed.partsQuote.parts;
+
+  // For "Service and Parts": first service item becomes the serviceType, rest + parts items = parts list
+  // For "Service Only": all service items in parts list
+  // For "Parts Only": all parts items in parts list
+  let serviceType = "";
+  let servicePrice = 0;
+  let partsList: Array<{ description: string; partNumber: string; quantity: number; unitPrice: number }> = [];
+
+  if (!isPartsOnly && serviceParts.length > 0) {
+    serviceType = serviceParts[0].name;
+    servicePrice = serviceParts[0].price;
+    // Remaining service items go into parts list
+    partsList = serviceParts.slice(1).map((p) => ({
+      description: p.name,
+      partNumber: p.partNumber,
+      quantity: p.quantity,
+      unitPrice: p.price,
+    }));
+  }
+
+  if (!isServiceOnly) {
+    const partsItems = partsParts.map((p) => ({
+      description: p.name,
+      partNumber: p.partNumber,
+      quantity: p.quantity,
+      unitPrice: p.price,
+    }));
+    partsList = [...partsList, ...partsItems];
+  }
+
+  return {
+    customerName,
+    serialNumber,
+    facilityName,
+    accountName: facilityName,
+    address,
+    contractType,
+    serviceType,
+    servicePrice,
+    parts: partsList,
+  };
+}
+
+export function QuoteForm({ parsedData }: QuoteFormProps) {
   const { toast } = useToast();
   
   // Data Fetching
   const { data: serialsData, isLoading: isLoadingSerials } = useListSerials();
   const { data: partsData, isLoading: isLoadingParts } = useListParts();
+
+  const initialValues = parsedData ? buildInitialValues(parsedData) : {};
   
   const form = useForm<QuoteFormValues>({
     resolver: zodResolver(quoteFormSchema),
@@ -81,7 +151,8 @@ export function QuoteForm() {
       servicePrice: 0,
       parts: [],
       shippingAndHandling: 0,
-      notes: ""
+      notes: "",
+      ...initialValues,
     }
   });
 
@@ -96,7 +167,20 @@ export function QuoteForm() {
     { query: { enabled: !!serialNumber && serialNumber.length > 2, retry: false } }
   );
 
-  // Auto-fill form when asset data is loaded
+  // When parsed data is provided, show a confirmation toast once
+  useEffect(() => {
+    if (parsedData) {
+      const qt = parsedData.quoteType || "Quote";
+      const totalParts = parsedData.serviceQuote.parts.length + parsedData.partsQuote.parts.length;
+      toast({
+        title: "Excel data loaded",
+        description: `${qt} — ${totalParts} line item${totalParts !== 1 ? "s" : ""} imported. All fields are editable.`,
+      });
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // Auto-fill additional fields from asset lookup (enriches with contract status, product name, etc.)
   useEffect(() => {
     if (assetData?.asset) {
       const asset = assetData.asset;
@@ -110,12 +194,14 @@ export function QuoteForm() {
       if (asset.contractStatus) setValue("contractStatus", asset.contractStatus);
       if (asset.productName) setValue("productName", asset.productName);
       
-      toast({
-        title: "Asset found",
-        description: `Loaded data for ${asset.assetName || serialNumber}`,
-      });
+      if (!parsedData) {
+        toast({
+          title: "Asset found",
+          description: `Loaded data for ${asset.assetName || serialNumber}`,
+        });
+      }
     }
-  }, [assetData, setValue, serialNumber, toast]);
+  }, [assetData, setValue, serialNumber, toast, parsedData]);
 
   const generateMutation = useGenerateQuote({
     mutation: {
@@ -208,7 +294,9 @@ export function QuoteForm() {
           </div>
           <div>
             <h2 className="text-xl">Customer Information</h2>
-            <p className="text-sm text-muted-foreground">Details populated automatically from serial lookup</p>
+            <p className="text-sm text-muted-foreground">
+              {parsedData ? "Populated from Excel — edit any field below" : "Details populated automatically from serial lookup"}
+            </p>
           </div>
         </div>
 
