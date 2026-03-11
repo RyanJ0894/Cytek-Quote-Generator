@@ -1,9 +1,19 @@
 import xlsx from "xlsx";
 import path from "path";
-import { fileURLToPath } from "url";
+import { existsSync } from "fs";
 
-const __dirname = path.dirname(fileURLToPath(import.meta.url));
-const DATA_FILE = path.resolve(__dirname, "../data/quoting_data.xlsx");
+// Resolve data file path for both dev (ESM, run from artifacts/api-server/) and
+// production (CJS bundle, run from workspace root via `node artifacts/api-server/dist/index.cjs`)
+function resolveDataFile(): string {
+  const candidates = [
+    path.join(process.cwd(), "src/data/quoting_data.xlsx"),
+    path.join(process.cwd(), "artifacts/api-server/src/data/quoting_data.xlsx"),
+    path.join(process.cwd(), "data/quoting_data.xlsx"),
+  ];
+  return candidates.find((p) => existsSync(p)) ?? candidates[0];
+}
+
+const DATA_FILE = resolveDataFile();
 
 export interface AssetRecord {
   serialNumber: string;
