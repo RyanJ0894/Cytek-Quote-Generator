@@ -1,22 +1,26 @@
 openapi: 3.1.0
 info:
-  # Do not change the title, if the title changes, the import paths will be broken
   title: Api
   version: 0.1.0
-  description: API specification
+  description: Cytek Quoting Tool API
 servers:
   - url: /api
     description: Base API path
 tags:
   - name: health
     description: Health operations
+  - name: assets
+    description: Asset data lookup
+  - name: parts
+    description: Parts catalog
+  - name: quotes
+    description: Quote generation
 paths:
   /healthz:
     get:
       operationId: healthCheck
       tags: [health]
       summary: Health check
-      description: Returns server health status
       responses:
         "200":
           description: Healthy
@@ -24,6 +28,78 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/HealthStatus"
+
+  /assets/lookup:
+    get:
+      operationId: lookupAsset
+      tags: [assets]
+      summary: Look up asset by serial number
+      parameters:
+        - name: serial
+          in: query
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Asset found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AssetLookupResult"
+        "404":
+          description: Asset not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /assets/serials:
+    get:
+      operationId: listSerials
+      tags: [assets]
+      summary: List all serial numbers for autocomplete
+      responses:
+        "200":
+          description: List of serial numbers
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SerialsListResult"
+
+  /parts:
+    get:
+      operationId: listParts
+      tags: [parts]
+      summary: List all available parts from pricing data
+      responses:
+        "200":
+          description: Parts list
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PartsListResult"
+
+  /quotes/generate:
+    post:
+      operationId: generateQuote
+      tags: [quotes]
+      summary: Generate a PDF quote
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/QuoteRequest"
+      responses:
+        "200":
+          description: PDF generated
+          content:
+            application/pdf:
+              schema:
+                type: string
+                format: binary
+
 components:
   schemas:
     HealthStatus:
@@ -34,3 +110,141 @@ components:
       required:
         - status
 
+    AssetData:
+      type: object
+      properties:
+        serialNumber:
+          type: string
+        assetName:
+          type: string
+        accountName:
+          type: string
+        facilityName:
+          type: string
+        contractNumber:
+          type: string
+        contractType:
+          type: string
+        contractStatus:
+          type: string
+        productName:
+          type: string
+        contactName:
+          type: string
+        contactEmail:
+          type: string
+        street:
+          type: string
+        city:
+          type: string
+        stateZip:
+          type: string
+        region:
+          type: string
+        serviceTerritory:
+          type: string
+        primaryTechnician:
+          type: string
+      required:
+        - serialNumber
+        - assetName
+        - accountName
+
+    AssetLookupResult:
+      type: object
+      properties:
+        asset:
+          $ref: "#/components/schemas/AssetData"
+      required:
+        - asset
+
+    SerialsListResult:
+      type: object
+      properties:
+        serials:
+          type: array
+          items:
+            type: string
+      required:
+        - serials
+
+    PartItem:
+      type: object
+      properties:
+        partName:
+          type: string
+        partNumber:
+          type: string
+        listPrice:
+          type: number
+        netPrice:
+          type: number
+        category:
+          type: string
+      required:
+        - partName
+        - listPrice
+
+    PartsListResult:
+      type: object
+      properties:
+        parts:
+          type: array
+          items:
+            $ref: "#/components/schemas/PartItem"
+      required:
+        - parts
+
+    QuoteLineItem:
+      type: object
+      properties:
+        description:
+          type: string
+        partNumber:
+          type: string
+        quantity:
+          type: integer
+        unitPrice:
+          type: number
+      required:
+        - description
+        - quantity
+        - unitPrice
+
+    QuoteRequest:
+      type: object
+      properties:
+        customerName:
+          type: string
+        accountName:
+          type: string
+        facilityName:
+          type: string
+        address:
+          type: string
+        serialNumber:
+          type: string
+        contractType:
+          type: string
+        serviceType:
+          type: string
+        servicePrice:
+          type: number
+        parts:
+          type: array
+          items:
+            $ref: "#/components/schemas/QuoteLineItem"
+        notes:
+          type: string
+      required:
+        - customerName
+        - serialNumber
+        - parts
+
+    ErrorResponse:
+      type: object
+      properties:
+        error:
+          type: string
+      required:
+        - error

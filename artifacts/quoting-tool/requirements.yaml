@@ -1,0 +1,14 @@
+packages:
+  "react-hook-form": "Form state management"
+  "@hookform/resolvers": "Zod validation integration for react-hook-form"
+  "clsx": "Utility for constructing className strings conditionally"
+  "tailwind-merge": "Utility to safely merge Tailwind classes"
+  "framer-motion": "Smooth animations for adding/removing parts and layout transitions"
+  "lucide-react": "Beautiful icons for the UI"
+
+images: []
+
+notes:
+  - "Using generated API hooks from @workspace/api-client-react"
+  - "The /api/assets/lookup endpoint expects a ?serial= query parameter"
+  - "Generating a quote returns a PDF Blob that we create an object URL for and download"
