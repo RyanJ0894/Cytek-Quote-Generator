@@ -3,26 +3,53 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1" />
-    <title>Cytek Quoting Tool</title>
+    <title>Cytek Quote Generator</title>
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
     <style>
-      /* Hide Replit badge */
+      /* Aggressively hide any Replit badge elements */
       #replit-badge-container,
+      [id^="replit"],
+      [class*="replit-badge"],
       [data-replit-badge],
-      a[href*="replit.com"]:not([class]),
-      div[class*="replit-badge"],
-      div[id*="replit-badge"] {
+      a[href*="replit.com"] {
         display: none !important;
         visibility: hidden !important;
         opacity: 0 !important;
         pointer-events: none !important;
+        width: 0 !important;
+        height: 0 !important;
+        overflow: hidden !important;
+        position: absolute !important;
+        clip: rect(0,0,0,0) !important;
       }
     </style>
   </head>
   <body>
     <div id="root"></div>
+    <script>
+      // MutationObserver to remove Replit badge the instant it's injected
+      (function() {
+        function removeBadge() {
+          var selectors = [
+            '#replit-badge-container',
+            '[id^="replit"]',
+            '[class*="replit"]',
+            'a[href*="replit.com"]'
+          ];
+          selectors.forEach(function(sel) {
+            document.querySelectorAll(sel).forEach(function(el) {
+              el.remove();
+            });
+          });
+        }
+        var observer = new MutationObserver(removeBadge);
+        observer.observe(document.documentElement, { childList: true, subtree: true });
+        document.addEventListener('DOMContentLoaded', removeBadge);
+        window.addEventListener('load', removeBadge);
+      })();
+    </script>
     <script type="module" src="/src/main.tsx"></script>
   </body>
 </html>
