@@ -27,7 +27,6 @@ export default function Home() {
 
   return (
     <div className="min-h-screen bg-slate-50 bg-[radial-gradient(ellipse_at_top_right,_var(--tw-gradient-stops))] from-blue-100/40 via-slate-50 to-slate-50">
-
       {/* Header */}
       <header className="bg-white/80 backdrop-blur-md border-b border-slate-200 sticky top-0 z-40">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
@@ -56,7 +55,6 @@ export default function Home() {
           </div>
         </div>
       </header>
-
       {/* Main Content */}
       <main className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 py-10">
         <AnimatePresence mode="wait">
@@ -72,9 +70,7 @@ export default function Home() {
                 <h2 className="text-3xl font-bold text-slate-900 font-display mb-2">
                   Start with Your Excel File
                 </h2>
-                <p className="text-slate-500 max-w-xl mx-auto">
-                  Upload your Cytek Quoting Tool spreadsheet — the app reads every tab and fills in all the fields automatically. You can edit anything before generating the PDF.
-                </p>
+                <p className="text-slate-500 max-w-xl mx-auto">Upload your Excel spreadsheet — the app reads every tab and fills in all the fields automatically. You can edit anything before generating the PDF.</p>
               </div>
               <ExcelUpload onParsed={handleParsed} onSkip={handleSkip} />
             </motion.div>
