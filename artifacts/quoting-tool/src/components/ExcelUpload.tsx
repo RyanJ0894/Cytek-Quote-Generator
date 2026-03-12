@@ -221,9 +221,7 @@ export function ExcelUpload({ onParsed, onSkip }: ExcelUploadProps) {
                   <h2 className="text-xl font-bold text-slate-900">
                     Upload Your FSE Excel File
                   </h2>
-                  <p className="text-sm text-muted-foreground">
-                    Upload your filled-out Cytek Quoting Tool spreadsheet to auto-populate all fields
-                  </p>
+                  <p className="text-sm text-muted-foreground">Upload your filled-in spreadsheet to auto-populate all fields</p>
                 </div>
               </div>
             </div>
