@@ -180,6 +180,19 @@ export function QuoteForm({ parsedData }: QuoteFormProps) {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  // Auto-fill service price when service type dropdown changes
+  const watchedServiceType = watch("serviceType");
+  useEffect(() => {
+    if (!watchedServiceType || !partsData?.parts) return;
+    const match = partsData.parts.find(
+      (p) => p.partName.trim().toLowerCase() === watchedServiceType.trim().toLowerCase()
+    );
+    if (match && match.listPrice > 0) {
+      setValue("servicePrice", match.listPrice, { shouldValidate: true });
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [watchedServiceType]);
+
   // Auto-fill additional fields from asset lookup (enriches with contract status, product name, etc.)
   useEffect(() => {
     if (assetData?.asset) {
@@ -249,6 +262,7 @@ export function QuoteForm({ parsedData }: QuoteFormProps) {
         quantity: p.quantity,
         unitPrice: p.unitPrice
       })),
+      shipping: data.shippingAndHandling || 0,
       notes: data.notes
     };
     generateMutation.mutate({ data: payload });
