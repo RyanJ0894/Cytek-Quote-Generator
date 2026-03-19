@@ -337,7 +337,7 @@ router.post("/generate", (req: Request, res: Response) => {
     };
 
     tcHeading("1. ACCEPTANCE");
-    tcBody("This quotation constitutes an offer by Cytek Biosciences, Inc. ("Cytek") to provide the services and/or parts described herein. Customer's written acceptance, purchase order, or commencement of performance constitutes acceptance of these Terms and Conditions, which supersede any conflicting terms in Customer's purchase order or other documents.");
+    tcBody('This quotation constitutes an offer by Cytek Biosciences, Inc. ("Cytek") to provide the services and/or parts described herein. Customer\'s written acceptance, purchase order, or commencement of performance constitutes acceptance of these Terms and Conditions, which supersede any conflicting terms in Customer\'s purchase order or other documents.');
 
     tcHeading("2. PRICES AND PAYMENT");
     tcBody("All prices are in U.S. Dollars and are valid for thirty (30) days from the date of this quote, unless otherwise stated. Invoices are due and payable Net 30 days from the invoice date. Cytek reserves the right to assess a late payment charge of 1.5% per month on overdue balances. Customer is responsible for all applicable taxes, duties, and freight charges unless explicitly included in this quote.");
