@@ -1,0 +1,8 @@
+uploads = []
+generated = []
+
+[[outputs]]
+id = "fdRUsAqxwacewQkDb8BP7"
+uri = "file://test_quote_sample.pdf"
+type = "pdf"
+title = "Sample Quote PDF — 3 pages: Quote + T&C + Signatures"
