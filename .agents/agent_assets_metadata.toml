@@ -12,3 +12,9 @@ id = "mIxusqYEmihvLYHlQ073l"
 uri = "file://sample_quote_output.pdf"
 type = "pdf"
 title = "New PDF Format — Matches Cytek reference style (quote + T&C)"
+
+[[outputs]]
+id = "pomGTYwSHDMnbG-s40FPo"
+uri = "file://sample_output_v2.pdf"
+type = "pdf"
+title = "Updated Quote PDF — Logo + bordered table + QUOTE# box"
