@@ -8,6 +8,7 @@ interface QuoteLineItem {
   partNumber?: string;
   quantity: number;
   unitPrice: number;
+  netPrice?: number;
 }
 
 interface QuoteRequest {
@@ -26,86 +27,108 @@ interface QuoteRequest {
   notes?: string;
 }
 
-// Column X positions (mirroring the Excel sheet layout)
-// Usable width: 612 - 72 (margins) = 540pt
-// Col C starts at 72, then: Item(30), Desc(165), PartNum(105), Qty(35), ListPrice(55), NetPrice(55), ExtPrice(60) + right padding
-const COL = {
-  item:      72,
-  desc:      102,
-  partNum:   267,
-  qty:       372,
-  listPrice: 407,
-  netPrice:  462,
-  extPrice:  517,
-  right:     572,
+// ── Layout constants ────────────────────────────────────────────────────
+const PAGE_W = 612;
+const PAGE_H = 792;
+const L = 72;   // left margin for customer block / table
+const R = 576;  // right margin
+const BODY_W = R - L; // 504
+
+// Table column X positions (all relative to page left)
+const TC = {
+  item:      L,
+  desc:      L + 40,
+  partNum:   L + 220,
+  qty:       L + 330,
+  listPrice: L + 365,
+  netPrice:  L + 430,
+  extPrice:  L + 490,
+  right:     R,
 };
 
-const ROW_H = 18;
-const HEADER_H = 20;
+const FOOTER_Y = PAGE_H - 52;
 
-const NAVY   = "#003087";
-const GRAY_BG = "#F2F2F2";
-const GRAY_LINE = "#CCCCCC";
-const BLACK  = "#1A1A1A";
-const WHITE  = "#FFFFFF";
-const DARK_GRAY = "#444444";
+const FONT_REG  = "Helvetica";
+const FONT_BOLD = "Helvetica-Bold";
 
-function fmt(n: number): string {
+function fmtDate(): string {
+  const now = new Date();
+  return `${now.getMonth() + 1}/${now.getDate()}/${now.getFullYear()}`;
+}
+
+function fmtMoney(n: number): string {
   return `$${n.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 }
 
-function drawTableHeader(doc: PDFKit.PDFDocument, y: number): void {
-  doc.rect(COL.item, y, COL.right - COL.item, HEADER_H).fillColor(NAVY).fill();
-  doc.fillColor(WHITE).fontSize(8).font("Helvetica-Bold");
-  doc.text("Item",           COL.item + 2,     y + 6, { width: COL.desc - COL.item - 4,     align: "center" });
-  doc.text("Description",   COL.desc + 2,     y + 6, { width: COL.partNum - COL.desc - 4,   align: "left" });
-  doc.text("Product Number", COL.partNum + 2,  y + 6, { width: COL.qty - COL.partNum - 4,    align: "left" });
-  doc.text("Qty",            COL.qty + 2,      y + 6, { width: COL.listPrice - COL.qty - 4,  align: "center" });
-  doc.text("List\nPrice",    COL.listPrice + 2, y + 6, { width: COL.netPrice - COL.listPrice - 4, align: "right" });
-  doc.text("Net\nPrice",     COL.netPrice + 2,  y + 6, { width: COL.extPrice - COL.netPrice - 4, align: "right" });
-  doc.text("Ext. Price",     COL.extPrice + 2,  y + 6, { width: COL.right - COL.extPrice - 4, align: "right" });
+// Draw the identical footer that appears on every page of the reference PDFs
+function drawFooter(doc: PDFKit.PDFDocument): void {
+  const fy = FOOTER_Y;
+  doc.moveTo(36, fy).lineTo(R, fy).strokeColor("#000000").lineWidth(0.5).stroke();
+  doc.font(FONT_REG).fontSize(8).fillColor("#000000")
+     .text(
+       "Cytek Biosciences Inc. | Offices in Fremont, CA 94538. 47215 Lakeview Blvd",
+       36, fy + 6, { width: PAGE_W - 72, align: "center" }
+     );
+  doc.text(
+    "Phone: (510) 657-0102 | Fax: (510) 657-0151 | www.cytekbio.com | email: technical.support@cytekbio.com",
+    36, fy + 18, { width: PAGE_W - 72, align: "center" }
+  );
 }
 
-function drawTableRow(
-  doc: PDFKit.PDFDocument,
-  y: number,
-  itemNum: number,
-  desc: string,
-  partNum: string,
-  qty: number,
-  listPrice: number,
-  netPrice: number,
-  extPrice: number,
-  shade: boolean
-): void {
-  if (shade) {
-    doc.rect(COL.item, y, COL.right - COL.item, ROW_H).fillColor(GRAY_BG).fill();
-  }
-  // Border
-  doc.rect(COL.item, y, COL.right - COL.item, ROW_H).strokeColor(GRAY_LINE).lineWidth(0.4).stroke();
-  // Vertical dividers
-  for (const x of [COL.desc, COL.partNum, COL.qty, COL.listPrice, COL.netPrice, COL.extPrice]) {
-    doc.moveTo(x, y).lineTo(x, y + ROW_H).strokeColor(GRAY_LINE).lineWidth(0.4).stroke();
-  }
-
-  doc.fillColor(BLACK).fontSize(8).font("Helvetica");
-  doc.text(String(itemNum),       COL.item + 2,      y + 5, { width: COL.desc - COL.item - 4,     align: "center" });
-  doc.text(desc,                  COL.desc + 3,      y + 5, { width: COL.partNum - COL.desc - 6,   align: "left" });
-  doc.text(partNum || "",         COL.partNum + 3,   y + 5, { width: COL.qty - COL.partNum - 6,    align: "left" });
-  doc.text(String(qty),           COL.qty + 2,       y + 5, { width: COL.listPrice - COL.qty - 4,  align: "center" });
-  doc.text(fmt(listPrice),        COL.listPrice + 2, y + 5, { width: COL.netPrice - COL.listPrice - 4,  align: "right" });
-  doc.text(fmt(netPrice),         COL.netPrice + 2,  y + 5, { width: COL.extPrice - COL.netPrice - 4,   align: "right" });
-  doc.text(fmt(extPrice),         COL.extPrice + 2,  y + 5, { width: COL.right - COL.extPrice - 4,  align: "right" });
+// Draw date top-right (matches reference exactly)
+function drawDate(doc: PDFKit.PDFDocument, dateStr: string): void {
+  doc.font(FONT_REG).fontSize(10).fillColor("#000000")
+     .text(dateStr, 36, 36, { width: PAGE_W - 72, align: "right" });
 }
+
+// ── T&C text blocks ──────────────────────────────────────────────────────
+// Exact language from Cytek's official Time & Materials quotation documents
+const TC_INTRO = `These general terms and conditions (along with the quotation, "Terms") apply to the purchase of time and/materials by the customer ("Customer", "Purchaser", "Buyer", also "you" or "your") listed on the attached "quotation" and Cytek Biosciences, Inc. ("Cytek", also "our," "we" or "us").`;
+
+const TC_SECTIONS: Array<{ heading: string; body: string }> = [
+  {
+    heading: "1. QUOTATIONS; APPLICABILITY OF TERMS:",
+    body: `The attached quotation is valid if Cytek receives your purchase order referencing the quotation number prior to the date indicated on the quotation. Cytek may withdraw the quotation any time before that date upon notice to you or before shipment if an event occurs that is outside our control and makes it commercially impractical for Cytek to fulfill the order. The prices and other terms are contingent on you accepting all the terms and conditions on the quotation without exception. Your issuance of a purchase order for any of the products or services referencing the quotation number or at the prices indicated in the quotation will be your indication to Cytek that you agree to these Terms without exception and the Terms will become the entire agreement between you and Cytek for the products and services ordered.`,
+  },
+  {
+    heading: "2. PAYMENT TERMS:",
+    body: `Terms are net 30 days from date of invoice for credit-approved domestic accounts. International accounts may be created by arrangement. Payment may be made by credit card for up to US$10,000 maximum. Cytek shall have the right to receive payment in advance when it deems necessary. If you fail to pay any invoice when due, Cytek may also apply a late payment charge equal to the lesser of one percent (1%), or the maximum permissible rate under applicable law, per month on the outstanding balance. Cytek may delay shipment or suspend performance under any agreement if payment under any agreement or order between you and Cytek is not received when due or is rescinded. All payments should be made to: Cytek Biosciences Inc., Wells Fargo Bank, 420 Montgomery Street, San Francisco, CA 94104, USA. For wire transfer: ACH Routing # 121042882, Account # 1923229718, SWIFT WFBIUS6S or please contact ar@cytekbio.com.`,
+  },
+  {
+    heading: "3. PRICING:",
+    body: `In addition to the stated prices, you must pay for all taxes and fees imposed on the sale or use of the products and any other governmental charges imposed on Cytek relating to the products and all shipping and handling, freight, insurance, and other services. All prices are in USD unless otherwise noted. Third-party providers are charged a 15% administrative fee; added to the total invoice.`,
+  },
+  {
+    heading: "4. SHIPMENT; DELIVERY; ACCEPTANCE; RETURNS:",
+    body: `Unless expressly specified on the Quotation, all products shipped internationally will be Carriage and Insurance Paid (CIP Incoterms 2020). US domestic shipments will be Free On-Board Origin (F.O.B. Origin Incoterms 2020). Both will be prepaid by Cytek and added to the invoice. Any taxes and duties required to complete delivery will be the responsibility of the Customer. Risk of loss with respect to all products will pass from Cytek to Customer upon shipment. Cytek will ship the Products within a reasonable time after Cytek receives your purchase order, or if the Quotation states a proposed shipment date, on or around such date. Cytek will endeavor to meet any delivery date specified in any purchase order but is not liable for failing to meet the delivery date. You must report to Cytek, in writing, any claims for missing or defective products within 30 days from your receipt of them. Defective products will be addressed according to the warranty provisions. Product returns will be accepted at Cytek's discretion under its Returned Materials Authorization (RMA) policy and may be subject to a restocking fee.`,
+  },
+  {
+    heading: "5. CANCELLATION:",
+    body: `Cancelled orders will be subject to a cancellation charge to cover any finished goods, work in process and non-cancellable non-returnable materials, labor costs and expenses incurred by Cytek in good faith to fulfill the purchase order prior to the cancellation.`,
+  },
+  {
+    heading: "6. LIMITED WARRANTY AND DISCLAIMER:",
+    body: `Cytek warrants that services will be performed in a workmanlike manner and products will be free of defects only as set forth below. Cytek's warranty does not apply to defects resulting from product misuse, abuse, neglect or operator negligence. If a product defect is discovered and verified by Cytek's investigation under normal and proper use during the applicable warranty period, Cytek will, at its option, and without charge correct the defect either by (i) repair during normal business hours, (ii) replacement with an equivalent product, or (iii) refund the purchase price paid by you. If required as set forth below, you must ship the defective product to Cytek, transportation charges prepaid. The original warranty period will continue to be in effect on any repaired or replaced products. If Cytek replaces any part under this warranty or as a result of any services performed, Cytek will own the replaced part. If a third party manufactured product is supplied to you pursuant to the quotation, Cytek assigns to you any rights that may exist under the warranty provided by the manufacturer, but Cytek does not warrant the performance of the third party manufactured product or provide any remedy for failure of the third-party product to perform.\n\nTHE WARRANTIES IN THIS SECTION ARE PROVIDED IN LIEU OF ALL OTHER WARRANTIES, EXPRESS OR IMPLIED, AND ARE YOUR EXCLUSIVE REMEDIES RELATING TO PERFORMANCE OF THE PRODUCTS AND SERVICES. CYTEK DISCLAIMS ALL OTHER WARRANTIES, INCLUDING WITHOUT LIMITATION, ANY WARRANTY ABOUT THE MERCHANTABILITY OF THE PRODUCTS OR THEIR FITNESS FOR A PARTICULAR PURPOSE. IF ANY IMPLIED WARRANTIES APPLY AS A MATTER OF LAW, THEY ARE LIMITED IN DURATION TO WARRANTY PERIOD SPECIFIED IN THIS SECTION.\n\nA. Refurbished flow cytometer systems. The purchase of a refurbished flow cytometer system will be covered by warranty for defects in materials and workmanship for a period of 90 days from installation and such warranty will cover costs for travel, labor and parts (the "service warranty"). Parts purchased for use with refurbished flow cytometer systems will be covered by warranty for defects for a period of one year from the date of installation (the "parts warranty"). If a service engineer is dispatched on-site after expiration of the service warranty period but during the parts warranty period, travel and labor charges will apply. Consumable items are not covered by this warranty.\n\nB. Upgraded flow cytometer systems. In connection with an upgrade of a flow cytometer system, the upgraded portion of the flow cytometer is covered by warranty for defects in materials and workmanship for a period of one year from upgrade installation (the "upgrade warranty"). Defective parts replaced under the upgrade warranty must be returned to Cytek and shall be the property of Cytek. Service visits not associated with the upgrade warranty will be charged at the prevailing rate.\n\nC. New and refurbished accessories. The purchase of new or refurbished flow cytometer accessories are covered by warranty for defects in materials and workmanship under Cytek's depot level warranty for a period of one year from shipment. The warranty includes all parts and labor provided that all work will be performed at Cytek's Fremont, California facility. You must ship the defective product to Cytek, transportation charges prepaid.\n\nD. Billable repair services. Cytek warrants that the services performed will be in a professional workman-like manner and shall conform to the standards of the industry to include the manufacturer's quality control protocol. Billable repair services are covered by warranty for defects in workmanship for a period of 30 days from the date service is rendered. Cytek's sole liability under this warranty is limited to re-servicing of the instrument(s) or at Cytek's option, return of the sum paid for such services.\n\nE. New and used replacement parts. The purchase of new and used replacement parts are covered by warranty from defects in materials and workmanship for a period of 30 days from installation. Parts marked as service returnable items have an "S" at the end of the part number and must be returned to Cytek within 14 days after receipt of the replacement part or the customer will be charged the non-exchange rate. Restocking fee for usable parts is 20%.`,
+  },
+  {
+    heading: "7. COMPUTER SUPPORT POLICY:",
+    body: `Cytek's computer support policy provides support for only the software and hardware required for system operation, which is referred to as the "basic flow cytometer system". Cytek does not guaranty the system will function if any additional hardware or software is used, including networking hardware and software. If the system fails to meet Cytek's specifications, then Cytek may, at its option, remove hardware and uninstall software in order to return the basic flow cytometer system to its original installed operational configuration. It is the responsibility of the customer to backup all data on the basic flow cytometer computer system.`,
+  },
+  {
+    heading: "8. INDEMNITY BY CYTEK:",
+    body: `Cytek agrees to indemnify and hold harmless the Buyer from any and all claims, demands, suits, and expenses by reason of injury or death of any person(s) or damage to any property (except as excluded hereafter) solely and directly attributable to the negligent acts or negligent omissions of Cytek, its agents or employees while on the premises of the Buyer and arising out of services provided herein. Cytek maintains product and general liability insurance policies. If Buyer wishes to be named an Additional Insured on Cytek's product and/or general liability policy, an additional 5% charge will be added to the total purchase price.`,
+  },
+  {
+    heading: "9. LIMITATION OF LIABILITY:",
+    body: `Except as provided in Section 8, Cytek's liability will be limited to direct damages not to exceed the amount paid by you to Cytek under this agreement. Cytek will not be responsible for any damages resulting from delayed shipment.\n\nAny action arising out of these Terms may be brought by you up to one year after the date of the actionable cause.`,
+  },
+];
 
 router.post("/generate", (req: Request, res: Response) => {
   try {
     const data = req.body as QuoteRequest;
-
+    const dateStr = fmtDate();
     const quoteNum = `Q-${Date.now().toString().slice(-8)}`;
-    const dateStr = new Date().toLocaleDateString("en-US", {
-      year: "numeric", month: "long", day: "numeric",
-    });
 
     const doc = new PDFDocument({
       margin: 0,
@@ -121,323 +144,287 @@ router.post("/generate", (req: Request, res: Response) => {
     );
     doc.pipe(res);
 
-    // ─────────────────────────────────────────────────────────────────
-    // PAGE 1: QUOTE
-    // ─────────────────────────────────────────────────────────────────
+    // ═══════════════════════════════════════════════════════════════
+    // PAGE 1 — QUOTE
+    // ═══════════════════════════════════════════════════════════════
 
-    // ── Top Header Bar ──────────────────────────────────────────────
-    doc.rect(0, 0, 612, 58).fillColor(NAVY).fill();
+    // Date top-right
+    drawDate(doc, dateStr);
 
-    // Company name + subtitle
-    doc.fillColor(WHITE).font("Helvetica-Bold").fontSize(18)
-       .text("CYTEK BIOSCIENCES", 36, 12);
-    doc.fillColor("#A8C4E0").font("Helvetica").fontSize(9)
-       .text("Service & Parts Quote", 36, 36);
+    // ── Customer Block (left) + Quote # (right) ──────────────────
+    let y = 100;
 
-    // Quote number & date (right side)
-    doc.fillColor(WHITE).font("Helvetica-Bold").fontSize(9)
-       .text(`QUOTE #: ${quoteNum}`, 0, 14, { width: 576, align: "right" });
-    doc.fillColor("#A8C4E0").font("Helvetica").fontSize(8)
-       .text(`Date: ${dateStr}`, 0, 30, { width: 576, align: "right" });
+    // Customer name (bold)
+    doc.font(FONT_BOLD).fontSize(10).fillColor("#000000")
+       .text(data.customerName || "", L, y);
 
-    // ── Customer Information ─────────────────────────────────────────
-    let y = 70;
+    // QUOTE# aligned right on the same line
+    doc.font(FONT_REG).fontSize(10)
+       .text(`QUOTE#: ${quoteNum}`, 36, y, { width: PAGE_W - 72, align: "right" });
 
-    // Left block: customer
-    doc.font("Helvetica-Bold").fontSize(8).fillColor(DARK_GRAY)
-       .text("BILL TO / CUSTOMER", 36, y);
-    y += 13;
-
-    doc.font("Helvetica-Bold").fontSize(10).fillColor(BLACK)
-       .text(data.customerName || "—", 36, y);
     y += 14;
 
+    // Facility / company
     if (data.facilityName) {
-      doc.font("Helvetica").fontSize(9).fillColor(DARK_GRAY)
-         .text(data.facilityName, 36, y);
+      doc.font(FONT_REG).fontSize(10).text(data.facilityName, L, y);
       y += 13;
     }
 
+    // Address (may be multi-line)
     if (data.address) {
-      doc.font("Helvetica").fontSize(9).fillColor(DARK_GRAY)
-         .text(data.address, 36, y, { width: 300 });
-      y += doc.heightOfString(data.address, { width: 300 }) + 4;
+      const addrH = doc.heightOfString(data.address, { width: 240, align: "left" });
+      doc.font(FONT_REG).fontSize(10)
+         .text(data.address, L, y, { width: 240 });
+      y += addrH + 4;
     }
 
-    // Right block: quote details
-    const detailY = 70;
-    const detailX = 360;
-    const labelW = 95;
-    const valW = 155;
+    y += 20; // gap before table
 
-    const detailRow = (label: string, val: string, ry: number) => {
-      doc.font("Helvetica-Bold").fontSize(8).fillColor(DARK_GRAY)
-         .text(label, detailX, ry, { width: labelW });
-      doc.font("Helvetica").fontSize(8).fillColor(BLACK)
-         .text(val || "—", detailX + labelW, ry, { width: valW });
-    };
+    // ── Table Headers ────────────────────────────────────────────
+    doc.font(FONT_REG).fontSize(9).fillColor("#000000");
 
-    let dy = detailY;
-    detailRow("Serial Number:", data.serialNumber || "—", dy); dy += 13;
-    detailRow("Contract Type:", data.contractType || "—", dy); dy += 13;
-    if (data.productName) { detailRow("Instrument:", data.productName, dy); dy += 13; }
-    if (data.accountName) { detailRow("Account:", data.accountName, dy); dy += 13; }
+    // Header row line 1
+    doc.text("Item",         TC.item,      y, { width: TC.desc - TC.item - 4,      align: "left" });
+    doc.text("Description",  TC.desc,      y, { width: TC.partNum - TC.desc - 4,   align: "left" });
+    doc.text("Product",      TC.partNum,   y, { width: TC.qty - TC.partNum - 4,    align: "left" });
+    doc.text("Qty",          TC.qty,       y, { width: TC.listPrice - TC.qty - 4,  align: "center" });
+    doc.text("List",         TC.listPrice, y, { width: TC.netPrice - TC.listPrice - 4, align: "right" });
+    doc.text("Net",          TC.netPrice,  y, { width: TC.extPrice - TC.netPrice - 4,  align: "right" });
+    doc.text("Ext. Price",   TC.extPrice,  y, { width: TC.right - TC.extPrice,     align: "right" });
+    y += 11;
 
-    // Divider line
-    const divY = Math.max(y, dy) + 8;
-    doc.moveTo(36, divY).lineTo(576, divY).strokeColor(NAVY).lineWidth(1).stroke();
+    // Header row line 2 (sub-labels)
+    doc.text("",             TC.item,      y, { width: TC.desc - TC.item - 4 });
+    doc.text("",             TC.desc,      y, { width: TC.partNum - TC.desc - 4 });
+    doc.text("Number",       TC.partNum,   y, { width: TC.qty - TC.partNum - 4,    align: "left" });
+    doc.text("",             TC.qty,       y, { width: TC.listPrice - TC.qty - 4 });
+    doc.text("Price",        TC.listPrice, y, { width: TC.netPrice - TC.listPrice - 4, align: "right" });
+    doc.text("Price",        TC.netPrice,  y, { width: TC.extPrice - TC.netPrice - 4,  align: "right" });
+    y += 11;
 
-    // ── Line Items Table ─────────────────────────────────────────────
-    let tableY = divY + 10;
+    // Thin horizontal rule under headers
+    doc.moveTo(L, y).lineTo(R, y).strokeColor("#000000").lineWidth(0.5).stroke();
+    y += 8;
 
-    drawTableHeader(doc, tableY);
-    tableY += HEADER_H;
-
-    // Build all line items
-    const allItems: Array<{
-      description: string;
-      partNumber: string;
-      quantity: number;
-      unitPrice: number;
-    }> = [];
+    // ── Line Items ───────────────────────────────────────────────
+    const allItems: Array<{ desc: string; partNum: string; qty: number; listPrice: number; netPrice: number }> = [];
 
     if (data.serviceType && (data.servicePrice ?? 0) > 0) {
       allItems.push({
-        description: data.serviceType,
-        partNumber: "",
-        quantity: 1,
-        unitPrice: data.servicePrice ?? 0,
+        desc: data.serviceType,
+        partNum: "",
+        qty: 1,
+        listPrice: data.servicePrice ?? 0,
+        netPrice: data.servicePrice ?? 0,
       });
     }
 
     for (const part of data.parts || []) {
       if (part.description) {
         allItems.push({
-          description: part.description,
-          partNumber: part.partNumber || "",
-          quantity: part.quantity || 1,
-          unitPrice: part.unitPrice || 0,
+          desc: part.description,
+          partNum: part.partNumber || "",
+          qty: part.quantity || 1,
+          listPrice: part.unitPrice || 0,
+          netPrice: part.netPrice ?? part.unitPrice ?? 0,
         });
       }
     }
 
-    let subtotal = 0;
+    let extTotal = 0;
 
     if (allItems.length === 0) {
-      doc.rect(COL.item, tableY, COL.right - COL.item, ROW_H).fillColor(GRAY_BG).fill();
-      doc.fillColor(DARK_GRAY).fontSize(8).font("Helvetica")
-         .text("No items added", COL.desc, tableY + 5, { width: 200 });
-      tableY += ROW_H;
+      doc.font(FONT_REG).fontSize(9).fillColor("#000000")
+         .text("No items.", TC.desc, y);
+      y += 14;
     } else {
       allItems.forEach((item, i) => {
-        if (tableY > 680) {
+        if (y > FOOTER_Y - 60) {
+          drawFooter(doc);
           doc.addPage({ margin: 0, size: "LETTER" });
-          tableY = 50;
-          drawTableHeader(doc, tableY);
-          tableY += HEADER_H;
+          drawDate(doc, dateStr);
+          doc.font(FONT_REG).fontSize(10).fillColor("#000000")
+             .text(`QUOTE#: ${quoteNum}`, 36, 36, { width: PAGE_W - 72, align: "right" });
+          y = 70;
         }
-        const ext = (item.quantity || 1) * (item.unitPrice || 0);
-        subtotal += ext;
-        drawTableRow(doc, tableY, i + 1, item.description, item.partNumber,
-          item.quantity, item.unitPrice, item.unitPrice, ext, i % 2 === 1);
-        tableY += ROW_H;
+
+        const ext = item.qty * item.listPrice;
+        extTotal += ext;
+
+        doc.font(FONT_REG).fontSize(9).fillColor("#000000");
+        // Item number centered
+        doc.text(String(i + 1), TC.item, y, { width: TC.desc - TC.item - 4, align: "center" });
+        // Description (may wrap)
+        const descH = doc.heightOfString(item.desc, { width: TC.partNum - TC.desc - 6, align: "left" });
+        doc.text(item.desc,         TC.desc,      y, { width: TC.partNum - TC.desc - 6,   align: "left" });
+        doc.text(item.partNum,      TC.partNum,   y, { width: TC.qty - TC.partNum - 4,    align: "left" });
+        doc.text(String(item.qty),  TC.qty,       y, { width: TC.listPrice - TC.qty - 4,  align: "center" });
+        doc.text(fmtMoney(item.listPrice), TC.listPrice, y, { width: TC.netPrice - TC.listPrice - 4, align: "right" });
+        // Net price: show only if different from list price and > 0; otherwise blank
+        if (item.netPrice > 0 && item.netPrice !== item.listPrice) {
+          doc.text(fmtMoney(item.netPrice), TC.netPrice, y, { width: TC.extPrice - TC.netPrice - 4, align: "right" });
+        }
+        doc.text(fmtMoney(ext), TC.extPrice, y, { width: TC.right - TC.extPrice, align: "right" });
+
+        y += Math.max(descH, 13) + 4;
       });
     }
 
-    // ── Shipping & Handling row ──────────────────────────────────────
+    y += 8;
+
+    // ── Shipping & Handling + Total ──────────────────────────────
     const shipping = data.shipping || 0;
+    const total = extTotal + shipping;
 
-    // S&H row (spans description through extPrice, italic)
-    doc.rect(COL.item, tableY, COL.right - COL.item, ROW_H).fillColor(GRAY_BG).fill();
-    doc.rect(COL.item, tableY, COL.right - COL.item, ROW_H).strokeColor(GRAY_LINE).lineWidth(0.4).stroke();
-    doc.fillColor(DARK_GRAY).fontSize(8).font("Helvetica-Oblique")
-       .text("Shipping & Handling Estimate", COL.desc + 3, tableY + 5, {
-         width: COL.extPrice - COL.desc - 6, align: "left"
+    // S&H line: right-aligned label, no dollar amount (matching reference)
+    doc.font(FONT_REG).fontSize(9).fillColor("#000000")
+       .text("Shipping & Handling Estimate", TC.listPrice, y, {
+         width: TC.right - TC.listPrice, align: "right"
        });
-    doc.font("Helvetica-Oblique")
-       .text(fmt(shipping), COL.extPrice + 2, tableY + 5, {
-         width: COL.right - COL.extPrice - 4, align: "right"
-       });
-    tableY += ROW_H;
+    y += 13;
 
-    // ── TOTAL row ────────────────────────────────────────────────────
-    const total = subtotal + shipping;
-
-    doc.rect(COL.item, tableY, COL.right - COL.item, ROW_H + 2).fillColor(NAVY).fill();
-    doc.fillColor(WHITE).fontSize(9).font("Helvetica-Bold")
-       .text("TOTAL", COL.desc + 3, tableY + 5, {
-         width: COL.extPrice - COL.desc - 6, align: "left"
-       });
-    doc.text(fmt(total), COL.extPrice + 2, tableY + 5, {
-      width: COL.right - COL.extPrice - 4, align: "right"
+    // Total line: label + value
+    doc.text("Total", TC.listPrice, y, {
+      width: TC.extPrice - TC.listPrice - 4, align: "right"
     });
-    tableY += ROW_H + 2 + 14;
+    doc.text(fmtMoney(total), TC.extPrice, y, {
+      width: TC.right - TC.extPrice, align: "right"
+    });
+    y += 20;
 
-    // ── Pre-Inspection / Recertification notice ──────────────────────
-    doc.rect(36, tableY, 540, 22).fillColor("#FFF8E1").fill();
-    doc.rect(36, tableY, 540, 22).strokeColor("#F0C040").lineWidth(0.6).stroke();
-    doc.fillColor("#7A5C00").fontSize(8).font("Helvetica-Bold")
-       .text("Pre-Inspection / Recertification:", 42, tableY + 7);
-    doc.font("Helvetica").fillColor("#7A5C00")
-       .text("A pre-inspection may be required prior to service. Cytek will notify the customer if additional assessment is needed.", 180, tableY + 7, { width: 390 });
-    tableY += 30;
-
-    // ── Notes ────────────────────────────────────────────────────────
+    // ── Notes (user-entered — e.g. "Pre-Inspection/Recertification") ──
     if (data.notes && data.notes.trim()) {
-      tableY += 4;
-      doc.fillColor(NAVY).fontSize(9).font("Helvetica-Bold")
-         .text("NOTES", 36, tableY);
-      doc.moveTo(36, tableY + 13).lineTo(576, tableY + 13)
-         .strokeColor(NAVY).lineWidth(0.8).stroke();
-      tableY += 18;
-      doc.fillColor(BLACK).fontSize(8.5).font("Helvetica")
-         .text(data.notes, 36, tableY, { width: 540 });
-      tableY += doc.heightOfString(data.notes, { width: 540 }) + 8;
+      doc.font(FONT_REG).fontSize(9).fillColor("#000000")
+         .text(`      ${data.notes.trim()}`, L, y, { width: BODY_W });
+      y += doc.heightOfString(data.notes.trim(), { width: BODY_W }) + 14;
     }
 
-    // ── Footer ───────────────────────────────────────────────────────
-    const footY = 752 - 38;
-    doc.moveTo(36, footY).lineTo(576, footY).strokeColor(GRAY_LINE).lineWidth(0.5).stroke();
-    doc.fillColor(DARK_GRAY).fontSize(7).font("Helvetica")
-       .text(
-         "This quote is valid for 30 days from the date issued. Prices in USD and subject to change without notice. " +
-         "Contact your Cytek Biosciences service representative with any questions.",
-         36, footY + 6, { width: 540, align: "center" }
-       );
-    doc.fillColor(NAVY).fontSize(7).font("Helvetica-Bold")
-       .text(`QUOTE #: ${quoteNum}  |  Page 1`, 0, footY + 17, { width: 576, align: "right" });
+    y += 14;
 
-    // ─────────────────────────────────────────────────────────────────
-    // PAGE 2: TERMS & CONDITIONS (Part 1)
-    // ─────────────────────────────────────────────────────────────────
+    // ── Standard bullet points (always present, matching reference) ──
+    const bullets = [
+      "-All prices in USD",
+      "-The above quotation does not include any applicable sales tax.",
+      "-Cytek will confirm order receipt and estimated ship date.",
+      "-This quote is valid for 60 days.",
+    ];
+    doc.font(FONT_REG).fontSize(9).fillColor("#000000");
+    for (const b of bullets) {
+      doc.text(b, L, y, { width: BODY_W });
+      y += 13;
+    }
+
+    drawFooter(doc);
+
+    // ═══════════════════════════════════════════════════════════════
+    // PAGE 2+ — GENERAL TERMS AND CONDITIONS OF SALE
+    // ═══════════════════════════════════════════════════════════════
     doc.addPage({ margin: 0, size: "LETTER" });
 
-    // Header band
-    doc.rect(0, 0, 612, 42).fillColor(NAVY).fill();
-    doc.fillColor(WHITE).font("Helvetica-Bold").fontSize(13)
-       .text("CYTEK BIOSCIENCES — TERMS AND CONDITIONS OF SERVICE", 36, 13);
-    doc.fillColor("#A8C4E0").font("Helvetica").fontSize(8)
-       .text(`Quote #: ${quoteNum}`, 0, 28, { width: 576, align: "right" });
+    let ty = 36;
+    let firstTCPage = true;
 
-    let ty = 56;
-    const pageW = 540;
-    const leftM = 36;
-
-    const tcHeading = (title: string) => {
-      ty += 4;
-      doc.fillColor(NAVY).font("Helvetica-Bold").fontSize(9)
-         .text(title, leftM, ty, { width: pageW });
-      ty += 14;
+    const ensureSpace = (needed: number) => {
+      if (ty + needed > FOOTER_Y - 10) {
+        drawFooter(doc);
+        doc.addPage({ margin: 0, size: "LETTER" });
+        ty = 36;
+        // Date + quote number on continuation pages
+        drawDate(doc, dateStr);
+        doc.font(FONT_REG).fontSize(10).fillColor("#000000")
+           .text(`QUOTE#: ${quoteNum}`, 36, 36, { width: PAGE_W - 72, align: "right" });
+        ty = 62;
+        firstTCPage = false;
+      }
     };
 
-    const tcBody = (text: string) => {
-      doc.fillColor(BLACK).font("Helvetica").fontSize(8.5)
-         .text(text, leftM, ty, { width: pageW });
-      ty += doc.heightOfString(text, { width: pageW }) + 7;
-    };
+    // First T&C page: date top-right, then centered title
+    drawDate(doc, dateStr);
+    ty = 62;
 
-    tcHeading("1. ACCEPTANCE");
-    tcBody('This quotation constitutes an offer by Cytek Biosciences, Inc. ("Cytek") to provide the services and/or parts described herein. Customer\'s written acceptance, purchase order, or commencement of performance constitutes acceptance of these Terms and Conditions, which supersede any conflicting terms in Customer\'s purchase order or other documents.');
+    // Title block
+    doc.font(FONT_BOLD).fontSize(11).fillColor("#000000")
+       .text("GENERAL TERMS AND CONDITIONS OF SALE", 36, ty, { width: PAGE_W - 72, align: "center" });
+    ty += 16;
+    doc.font(FONT_BOLD).fontSize(10)
+       .text("(TIME AND MATERIALS)", 36, ty, { width: PAGE_W - 72, align: "center" });
+    ty += 16;
 
-    tcHeading("2. PRICES AND PAYMENT");
-    tcBody("All prices are in U.S. Dollars and are valid for thirty (30) days from the date of this quote, unless otherwise stated. Invoices are due and payable Net 30 days from the invoice date. Cytek reserves the right to assess a late payment charge of 1.5% per month on overdue balances. Customer is responsible for all applicable taxes, duties, and freight charges unless explicitly included in this quote.");
+    // Opening paragraph
+    const introH = doc.heightOfString(TC_INTRO, { width: PAGE_W - 72, align: "left" });
+    ensureSpace(introH + 8);
+    doc.font(FONT_REG).fontSize(9.5).fillColor("#000000")
+       .text(TC_INTRO, 36, ty, { width: PAGE_W - 72 });
+    ty += introH + 10;
 
-    tcHeading("3. SCOPE OF SERVICES");
-    tcBody("Services are limited to those described in this quotation. Any additional labor, parts, or travel required due to conditions not apparent at the time of quoting will be identified and quoted separately before work proceeds. On-Site Support services are performed during standard Cytek business hours (Monday–Friday, 8 AM–5 PM local time, excluding holidays) unless an extended or emergency coverage agreement is in place.");
+    // Numbered sections
+    for (const sec of TC_SECTIONS) {
+      const sectionText = sec.body;
+      const headingH = 13;
+      const bodyH = doc.font(FONT_REG).fontSize(9.5).heightOfString(sectionText, { width: PAGE_W - 72 });
+      const totalH = headingH + bodyH + 12;
 
-    tcHeading("4. CUSTOMER RESPONSIBILITIES");
-    tcBody("Customer shall: (a) provide Cytek personnel with safe and timely access to the instrument and relevant facilities; (b) ensure that the instrument is in a safe operating condition prior to service; (c) designate a technically qualified representative to be present during all service visits; (d) retain backups of all data prior to any service work; and (e) promptly notify Cytek of any known hazardous conditions. Cytek is not responsible for data loss during or after service.");
+      // If the entire section fits, render it; otherwise let it flow across pages
+      if (ty + Math.min(totalH, 80) > FOOTER_Y - 10) {
+        drawFooter(doc);
+        doc.addPage({ margin: 0, size: "LETTER" });
+        drawDate(doc, dateStr);
+        doc.font(FONT_REG).fontSize(10).fillColor("#000000")
+           .text(`QUOTE#: ${quoteNum}`, 36, 36, { width: PAGE_W - 72, align: "right" });
+        ty = 62;
+        firstTCPage = false;
+      }
 
-    tcHeading("5. WARRANTY ON SERVICES AND PARTS");
-    tcBody("Cytek warrants that services will be performed in a professional and workmanlike manner consistent with industry standards. Replacement parts supplied by Cytek carry a ninety (90) day warranty against defects in material and workmanship from the date of installation, unless otherwise stated. This warranty does not cover damage resulting from misuse, unauthorized modifications, use of non-Cytek approved consumables, or failure to follow Cytek's operating procedures.");
+      // Render heading inline (bold prefix + body)
+      // Build full paragraph: "1. HEADING: body text"
+      const fullPara = `${sec.heading} ${sec.body}`;
+      const paraH = doc.font(FONT_REG).fontSize(9.5).heightOfString(fullPara, { width: PAGE_W - 72 });
 
-    tcHeading("6. LIMITATION OF LIABILITY");
-    tcBody("CYTEK'S TOTAL LIABILITY FOR ANY CLAIM ARISING OUT OF OR RELATING TO THIS QUOTE OR ANY SERVICES PROVIDED HEREUNDER SHALL NOT EXCEED THE TOTAL AMOUNT PAID BY CUSTOMER FOR THE SPECIFIC SERVICE OR PARTS GIVING RISE TO THE CLAIM. IN NO EVENT SHALL CYTEK BE LIABLE FOR INDIRECT, INCIDENTAL, SPECIAL, CONSEQUENTIAL, OR PUNITIVE DAMAGES, INCLUDING LOST PROFITS OR DATA, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGES.");
+      // If paragraph would overflow, check if we need a new page
+      if (ty + paraH > FOOTER_Y - 10 && paraH < FOOTER_Y - 80) {
+        drawFooter(doc);
+        doc.addPage({ margin: 0, size: "LETTER" });
+        drawDate(doc, dateStr);
+        doc.font(FONT_REG).fontSize(10).fillColor("#000000")
+           .text(`QUOTE#: ${quoteNum}`, 36, 36, { width: PAGE_W - 72, align: "right" });
+        ty = 62;
+        firstTCPage = false;
+      }
 
-    tcHeading("7. CANCELLATION AND RESCHEDULING");
-    tcBody("Customer may cancel or reschedule a service visit with at least five (5) business days' written notice at no charge. Cancellations received less than five (5) business days prior to the scheduled date may be subject to a cancellation fee equal to one (1) day of on-site labor at the then-current list rate. Travel and lodging costs already incurred by Cytek at the time of cancellation are non-refundable.");
+      // Render the section — heading bold, body regular, inline
+      // We do this by rendering the heading bold then the body regular on the same flow
+      doc.font(FONT_BOLD).fontSize(9.5).fillColor("#000000")
+         .text(sec.heading + " ", 36, ty, { width: PAGE_W - 72, continued: true });
+      doc.font(FONT_REG);
 
-    // ── Page 2 Footer ────────────────────────────────────────────────
-    doc.moveTo(36, footY).lineTo(576, footY).strokeColor(GRAY_LINE).lineWidth(0.5).stroke();
-    doc.fillColor(DARK_GRAY).fontSize(7).font("Helvetica")
-       .text("Cytek Biosciences, Inc.  ·  47215 Lakeview Blvd, Fremont, CA 94538  ·  www.cytekbio.com", 36, footY + 6, { width: pageW, align: "center" });
-    doc.fillColor(NAVY).fontSize(7).font("Helvetica-Bold")
-       .text(`QUOTE #: ${quoteNum}  |  Page 2`, 0, footY + 17, { width: 576, align: "right" });
+      // Handle multi-paragraph body (split by \n\n)
+      const paragraphs = sec.body.split("\n\n");
+      paragraphs.forEach((para, pi) => {
+        if (pi === 0) {
+          // First paragraph continues from heading
+          doc.text(para, { width: PAGE_W - 72, continued: false });
+          ty += doc.heightOfString(sec.heading + " " + para, { width: PAGE_W - 72 }) + 4;
+        } else {
+          // Subsequent paragraphs in same section
+          if (ty + doc.heightOfString(para, { width: PAGE_W - 72 }) > FOOTER_Y - 10) {
+            drawFooter(doc);
+            doc.addPage({ margin: 0, size: "LETTER" });
+            drawDate(doc, dateStr);
+            doc.font(FONT_REG).fontSize(10).fillColor("#000000")
+               .text(`QUOTE#: ${quoteNum}`, 36, 36, { width: PAGE_W - 72, align: "right" });
+            ty = 62;
+            firstTCPage = false;
+          }
+          doc.font(FONT_REG).fontSize(9.5).fillColor("#000000")
+             .text(para, 36, ty, { width: PAGE_W - 72 });
+          ty += doc.heightOfString(para, { width: PAGE_W - 72 }) + 4;
+        }
+      });
 
-    // ─────────────────────────────────────────────────────────────────
-    // PAGE 3: TERMS & CONDITIONS (Part 2) + Signature Block
-    // ─────────────────────────────────────────────────────────────────
-    doc.addPage({ margin: 0, size: "LETTER" });
+      ty += 6; // gap between sections
+    }
 
-    doc.rect(0, 0, 612, 42).fillColor(NAVY).fill();
-    doc.fillColor(WHITE).font("Helvetica-Bold").fontSize(13)
-       .text("CYTEK BIOSCIENCES — TERMS AND CONDITIONS (CONTINUED)", 36, 13);
-    doc.fillColor("#A8C4E0").font("Helvetica").fontSize(8)
-       .text(`Quote #: ${quoteNum}`, 0, 28, { width: 576, align: "right" });
-
-    ty = 56;
-
-    tcHeading("8. FORCE MAJEURE");
-    tcBody("Cytek shall not be liable for any delay or failure to perform due to causes beyond its reasonable control, including but not limited to acts of God, natural disasters, government actions, pandemics, labor disputes, supply chain disruptions, or carrier delays. In such events, Cytek will notify Customer as soon as reasonably practicable and work to reschedule services at the earliest feasible date.");
-
-    tcHeading("9. INTELLECTUAL PROPERTY");
-    tcBody("All service documentation, procedures, software, firmware, and related materials provided by Cytek remain the exclusive intellectual property of Cytek Biosciences, Inc. Customer is granted a limited, non-transferable license to use such materials solely for the purpose of operating the instrument serviced under this quote. No rights are granted to reproduce, modify, reverse-engineer, or distribute any Cytek proprietary materials.");
-
-    tcHeading("10. CONFIDENTIALITY");
-    tcBody("Each party agrees to treat as confidential any proprietary or non-public information disclosed by the other party in connection with services under this quote, and to use such information solely for purposes of fulfilling obligations hereunder. This obligation survives termination of services for a period of three (3) years.");
-
-    tcHeading("11. GOVERNING LAW AND DISPUTE RESOLUTION");
-    tcBody("These Terms and Conditions are governed by the laws of the State of California, without regard to its conflict of law principles. Any dispute arising from or related to these Terms shall first be subject to good-faith negotiation. If unresolved within thirty (30) days, disputes shall be submitted to binding arbitration in Alameda County, California, administered by JAMS in accordance with its then-current rules.");
-
-    tcHeading("12. ENTIRE AGREEMENT");
-    tcBody("These Terms and Conditions, together with the quote to which they are attached, constitute the entire agreement between the parties with respect to the subject matter hereof and supersede all prior negotiations, representations, or agreements, whether oral or written. No modification of these Terms shall be binding unless made in writing and signed by authorized representatives of both parties. The invalidity or unenforceability of any provision shall not affect the remaining provisions.");
-
-    // ── Acceptance Signature Block ───────────────────────────────────
-    ty += 10;
-    doc.rect(leftM, ty, pageW, 0.8).fillColor(NAVY).fill();
-    ty += 10;
-    doc.fillColor(NAVY).font("Helvetica-Bold").fontSize(10)
-       .text("CUSTOMER ACCEPTANCE", leftM, ty);
-    ty += 14;
-    doc.fillColor(BLACK).font("Helvetica").fontSize(8.5)
-       .text("By signing below, Customer acknowledges receipt of this quotation and agrees to the Terms and Conditions stated herein.", leftM, ty, { width: pageW });
-    ty += 24;
-
-    const sigColW = 240;
-    const sigGap = 60;
-    const sigLineY = ty + 28;
-
-    // Left sig block
-    doc.moveTo(leftM, sigLineY).lineTo(leftM + sigColW, sigLineY).strokeColor(BLACK).lineWidth(0.7).stroke();
-    doc.fillColor(DARK_GRAY).font("Helvetica").fontSize(8)
-       .text("Authorized Customer Signature", leftM, sigLineY + 4);
-    doc.moveTo(leftM, sigLineY + 22).lineTo(leftM + sigColW, sigLineY + 22).strokeColor(BLACK).lineWidth(0.7).stroke();
-    doc.text("Print Name / Title", leftM, sigLineY + 26);
-    doc.moveTo(leftM, sigLineY + 44).lineTo(leftM + sigColW, sigLineY + 44).strokeColor(BLACK).lineWidth(0.7).stroke();
-    doc.text("Date", leftM, sigLineY + 48);
-
-    // Right sig block
-    const r2 = leftM + sigColW + sigGap;
-    doc.moveTo(r2, sigLineY).lineTo(r2 + sigColW, sigLineY).strokeColor(BLACK).lineWidth(0.7).stroke();
-    doc.fillColor(DARK_GRAY).font("Helvetica").fontSize(8)
-       .text("Cytek Biosciences Representative", r2, sigLineY + 4);
-    doc.moveTo(r2, sigLineY + 22).lineTo(r2 + sigColW, sigLineY + 22).strokeColor(BLACK).lineWidth(0.7).stroke();
-    doc.text("Print Name / Title", r2, sigLineY + 26);
-    doc.moveTo(r2, sigLineY + 44).lineTo(r2 + sigColW, sigLineY + 44).strokeColor(BLACK).lineWidth(0.7).stroke();
-    doc.text("Date", r2, sigLineY + 48);
-
-    // PO Number line
-    ty = sigLineY + 68;
-    doc.moveTo(leftM, ty).lineTo(leftM + sigColW, ty).strokeColor(BLACK).lineWidth(0.7).stroke();
-    doc.fillColor(DARK_GRAY).font("Helvetica").fontSize(8)
-       .text("Customer Purchase Order Number", leftM, ty + 4);
-
-    // ── Page 3 Footer ────────────────────────────────────────────────
-    doc.moveTo(36, footY).lineTo(576, footY).strokeColor(GRAY_LINE).lineWidth(0.5).stroke();
-    doc.fillColor(DARK_GRAY).fontSize(7).font("Helvetica")
-       .text("Cytek Biosciences, Inc.  ·  47215 Lakeview Blvd, Fremont, CA 94538  ·  www.cytekbio.com", 36, footY + 6, { width: pageW, align: "center" });
-    doc.fillColor(NAVY).fontSize(7).font("Helvetica-Bold")
-       .text(`QUOTE #: ${quoteNum}  |  Page 3`, 0, footY + 17, { width: 576, align: "right" });
+    drawFooter(doc);
 
     doc.end();
   } catch (err) {

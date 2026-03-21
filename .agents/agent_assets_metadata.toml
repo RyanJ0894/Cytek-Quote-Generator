@@ -6,3 +6,9 @@ id = "fdRUsAqxwacewQkDb8BP7"
 uri = "file://test_quote_sample.pdf"
 type = "pdf"
 title = "Sample Quote PDF — 3 pages: Quote + T&C + Signatures"
+
+[[outputs]]
+id = "mIxusqYEmihvLYHlQ073l"
+uri = "file://sample_quote_output.pdf"
+type = "pdf"
+title = "New PDF Format — Matches Cytek reference style (quote + T&C)"
