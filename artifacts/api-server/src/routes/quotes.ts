@@ -69,6 +69,9 @@ const FONT_REG  = "Helvetica";
 const FONT_BOLD = "Helvetica-Bold";
 const FONT_OBL  = "Helvetica-Oblique";
 
+const LOGO_W = 160;
+const LOGO_H = Math.round(LOGO_W * (431 / 1505)); // ~46pt
+
 function fmtDate(): string {
   const d = new Date();
   return `${d.getMonth() + 1}/${d.getDate()}/${d.getFullYear()}`;
@@ -213,10 +216,24 @@ function drawFooter(doc: PDFKit.PDFDocument): void {
      );
 }
 
-// Date top-right on every page
-function drawPageDate(doc: PDFKit.PDFDocument, dateStr: string): void {
+// Logo + date on every page; optionally place QUOTE# box below logo on the right.
+// Returns the Y coordinate where content should start.
+function drawPageHeader(
+  doc: PDFKit.PDFDocument,
+  dateStr: string,
+  quoteNum?: string
+): number {
+  if (existsSync(LOGO_PATH)) {
+    doc.image(LOGO_PATH, ML, ML, { width: LOGO_W });
+  }
   doc.font(FONT_REG).fontSize(10).fillColor("#000000")
      .text(dateStr, ML, ML, { width: PAGE_W - ML * 2, align: "right" });
+  if (quoteNum) {
+    const boxY = ML + LOGO_H + 8;
+    drawQuoteNumBox(doc, quoteNum, MR - 184, boxY);
+    return boxY + 18 + 10;
+  }
+  return ML + LOGO_H + 14;
 }
 
 // QUOTE# in a bordered rectangle (for quote page only)
@@ -274,6 +291,26 @@ const TC_SECTIONS: Array<{ heading: string; body: string }> = [
     heading: "9. LIMITATION OF LIABILITY:",
     body: `Except as provided in Section 8, Cytek's liability will be limited to direct damages not to exceed the amount paid by you to Cytek under this agreement. Cytek will not be responsible for any damages resulting from delayed shipment.\n\nAny action arising out of these Terms may be brought by you up to one year after the date of the actionable cause.`,
   },
+  {
+    heading: "10. GOVERNING LAW:",
+    body: `This Agreement shall be governed in accordance with the laws of the State of California. The United Nations Convention on Contracts for the International Sale of Goods will not apply to these Terms. You and Cytek consent to the jurisdiction of, and venue in, the state and federal courts in Alameda County, California, U.S.A.`,
+  },
+  {
+    heading: "11. ENTIRE AGREEMENT:",
+    body: `These Terms constitute the entire understanding between you and Cytek with respect to the subject matter hereof and supersede all prior or co-existing communications and agreements regarding such subject matter and cannot be modified except by a written document (which states that it is an amendment) signed by authorized signatories of both parties. Any terms or conditions on your purchase order, order acknowledgement, or any other document relating to the products will be without legal effect.`,
+  },
+  {
+    heading: "12. GOVERNMENT CONTRACTS:",
+    body: `If the products are to be used in the performance of a U.S. Government contract or subcontract and a U.S. Government contract number appears on your purchase order, those clauses of the applicable U.S. Government procurement regulations that are mandatorily required by law to be included in U.S. Government subcontracts are incorporated into these Terms.`,
+  },
+  {
+    heading: "13. EXPORT AND USE RESTRICTIONS; INDEMNITY BY BUYER:",
+    body: `You acknowledge that Cytek products may be subject to the US export laws and regulations. You may not export or re-export the products (nor any direct product therefrom) in violation of the US export laws. You hereby certify that you are not on the US Department of Commerce's Denied Persons List or affiliated lists or on the US Department of Treasury Specially Designated Nationals List. To the extent required, you shall abide by any and all notices regarding export and agree not to remove or allow any third party to remove such notices. Your obligation under this section shall survive the expiration or termination of this agreement. You may not, and may not authorize or permit any affiliate or third party to, gain access to or determine the methods of operation of the product, alter, modify, disassemble, dismantle, deconstruct, analyze, determine compositions or structures, design around, or reverse engineer the product, or any part of the product, nor attempt to, or allow others to, products, reconstruct, create, develop a contract to develop a product similar to the product. You shall use the products in strict accordance with all applicable local, state, national, and supra-national laws, regulations and guidelines, as well as all safety precautions accompanying the products. You shall indemnify and hold harmless Cytek from any and all claims, damages, losses, fines or expenses arising out of or resulting from your breach of these Terms or any act or omission by you, or its agents, employees or subcontractors, in the handling, storage or use of the products, except to the extent caused by a breach of the warranty by Cytek as set forth above.`,
+  },
+  {
+    heading: "14. MISCELLANEOUS:",
+    body: `No waiver of rights under these Terms by either party shall constitute a subsequent waiver of this or any other right or remedy under these Terms nor are any rights hereunder shall be assigned or otherwise transferred by Buyer (by operation of law or otherwise) without the prior written consent of Cytek and any unauthorized transfer or assignment shall be void. If any of the terms and conditions set forth herein are held to be illegal or unenforceable, all remaining terms set forth herein shall remain in full force and effect. Cytek will not be liable for any delay in performance or failure to perform under these Terms due to circumstances beyond its reasonable control, including epidemics, pandemics, quarantines, earthquakes and other acts of God, actions of government, strikes, fire, explosion, flood, riot, lock-out, injunction, interruption of transportation, supplies or utilities, unavoidable accidents, or inability to obtain supplies at reasonable prices.`,
+  },
 ];
 
 // ── Route handler ────────────────────────────────────────────────────────
@@ -301,18 +338,11 @@ router.post("/generate", (req: Request, res: Response) => {
     // PAGE 1 — QUOTE
     // ═══════════════════════════════════════════════════════════════
 
-    // ── Logo top-left ────────────────────────────────────────────
-    const logoW = 160;
-    const logoH = Math.round(logoW * (431 / 1505)); // preserve aspect ratio ≈ 46pt
-    if (existsSync(LOGO_PATH)) {
-      doc.image(LOGO_PATH, ML, ML, { width: logoW });
-    }
-
-    // ── Date top-right ───────────────────────────────────────────
-    drawPageDate(doc, dateStr);
+    // ── Logo (top-left) + date (top-right) ──────────────────────
+    let y = drawPageHeader(doc, dateStr);
 
     // ── Customer block (left) ────────────────────────────────────
-    let y = ML + logoH + 14;
+    const customerTopY = y; // save for QUOTE# box alignment
 
     doc.font(FONT_BOLD).fontSize(10).fillColor("#000000")
        .text(data.customerName || "", ML, y);
@@ -329,9 +359,8 @@ router.post("/generate", (req: Request, res: Response) => {
       y += addrLines + 6;
     }
 
-    // ── QUOTE# boxed — right side, vertically centered with customer name ──
-    const boxY = ML + logoH + 14; // same y as customer name
-    drawQuoteNumBox(doc, quoteNum, MR - 184, boxY);
+    // ── QUOTE# boxed — right side, same level as customer name ──────────
+    drawQuoteNumBox(doc, quoteNum, MR - 184, customerTopY);
 
     y += 12; // gap before table
 
@@ -380,10 +409,7 @@ router.post("/generate", (req: Request, res: Response) => {
         if (y + ROW_H > FOOTER_Y - 60) {
           drawFooter(doc);
           doc.addPage({ margin: 0, size: "LETTER" });
-          drawPageDate(doc, dateStr);
-          doc.font(FONT_REG).fontSize(9).fillColor("#000000")
-             .text(`QUOTE#: ${quoteNum}`, ML, ML, { width: PAGE_W - ML * 2, align: "right" });
-          y = 62;
+          y = drawPageHeader(doc, dateStr, quoteNum);
           tableHeader(doc, y);
           y += HDR_H;
         }
@@ -446,9 +472,8 @@ router.post("/generate", (req: Request, res: Response) => {
     // ═══════════════════════════════════════════════════════════════
     doc.addPage({ margin: 0, size: "LETTER" });
 
-    // First T&C page: date only (no QUOTE# per reference)
-    drawPageDate(doc, dateStr);
-    let ty = 62;
+    // First T&C page: logo + date only (no QUOTE# box on title page)
+    let ty = drawPageHeader(doc, dateStr);
     let isFirstTCPage = true;
 
     // T&C title (centered)
@@ -463,11 +488,8 @@ router.post("/generate", (req: Request, res: Response) => {
     const newTCPage = () => {
       drawFooter(doc);
       doc.addPage({ margin: 0, size: "LETTER" });
-      drawPageDate(doc, dateStr);
-      // QUOTE# top-right on every T&C page after the first
-      doc.font(FONT_REG).fontSize(10).fillColor("#000000")
-         .text(`QUOTE#: ${quoteNum}`, ML, ML, { width: PAGE_W - ML * 2, align: "right" });
-      ty = 62;
+      // Logo + date + QUOTE# box on every T&C continuation page
+      ty = drawPageHeader(doc, dateStr, quoteNum);
       isFirstTCPage = false;
     };
 
