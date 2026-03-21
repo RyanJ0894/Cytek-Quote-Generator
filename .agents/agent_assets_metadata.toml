@@ -18,3 +18,9 @@ id = "pomGTYwSHDMnbG-s40FPo"
 uri = "file://sample_output_v2.pdf"
 type = "pdf"
 title = "Updated Quote PDF — Logo + bordered table + QUOTE# box"
+
+[[outputs]]
+id = "BO6PRVbZiVYCUEXX-MfXU"
+uri = "file://sample_v3.pdf"
+type = "pdf"
+title = "Updated PDF v3 — Logo on all pages, sections 10-14, fixed QUOTE# box"
