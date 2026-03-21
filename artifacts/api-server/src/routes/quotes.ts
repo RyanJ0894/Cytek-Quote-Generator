@@ -472,8 +472,8 @@ router.post("/generate", (req: Request, res: Response) => {
     // ═══════════════════════════════════════════════════════════════
     doc.addPage({ margin: 0, size: "LETTER" });
 
-    // First T&C page: logo + date only (no QUOTE# box on title page)
-    let ty = drawPageHeader(doc, dateStr);
+    // First T&C page: logo + date + QUOTE# box
+    let ty = drawPageHeader(doc, dateStr, quoteNum);
     let isFirstTCPage = true;
 
     // T&C title (centered)
