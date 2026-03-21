@@ -1,7 +1,21 @@
 import { Router, type IRouter, type Request, type Response } from "express";
 import PDFDocument from "pdfkit";
+import path from "path";
+import { existsSync } from "fs";
 
 const router: IRouter = Router();
+
+// ── Logo path resolution (dev vs prod) ──────────────────────────────────
+function resolveLogoPath(): string {
+  const candidates = [
+    path.join(process.cwd(), "src/data/cytek-logo.png"),
+    path.join(process.cwd(), "artifacts/api-server/src/data/cytek-logo.png"),
+    path.join(process.cwd(), "data/cytek-logo.png"),
+  ];
+  return candidates.find((p) => existsSync(p)) ?? candidates[0];
+}
+
+const LOGO_PATH = resolveLogoPath();
 
 interface QuoteLineItem {
   description: string;
@@ -27,62 +41,200 @@ interface QuoteRequest {
   notes?: string;
 }
 
-// ── Layout constants ────────────────────────────────────────────────────
-const PAGE_W = 612;
-const PAGE_H = 792;
-const L = 72;   // left margin for customer block / table
-const R = 576;  // right margin
-const BODY_W = R - L; // 504
+// ── Page constants ──────────────────────────────────────────────────────
+const PAGE_W  = 612;
+const PAGE_H  = 792;
+const ML      = 36;   // left margin
+const MR      = 576;  // right margin
 
-// Table column X positions (all relative to page left)
+// ── Table column X positions (left edge of each column) ─────────────────
+// Total table width: 576 - 36 = 540pt
+// Col widths: Item=35 | Desc=155 | PartNum=100 | Qty=30 | List=65 | Net=65 | Ext=90
 const TC = {
-  item:      L,
-  desc:      L + 40,
-  partNum:   L + 220,
-  qty:       L + 330,
-  listPrice: L + 365,
-  netPrice:  L + 430,
-  extPrice:  L + 490,
-  right:     R,
+  item:      36,   // 35pt wide
+  desc:      71,   // 155pt wide
+  partNum:   226,  // 100pt wide
+  qty:       326,  // 30pt wide
+  listPrice: 356,  // 65pt wide
+  netPrice:  421,  // 65pt wide
+  extPrice:  486,  // 90pt wide
+  right:     576,
 };
 
-const FOOTER_Y = PAGE_H - 52;
+const ROW_H   = 20;   // default row height
+const HDR_H   = 28;   // header row height (2-line labels)
+const FOOTER_Y = PAGE_H - 54;
 
 const FONT_REG  = "Helvetica";
 const FONT_BOLD = "Helvetica-Bold";
+const FONT_OBL  = "Helvetica-Oblique";
 
 function fmtDate(): string {
-  const now = new Date();
-  return `${now.getMonth() + 1}/${now.getDate()}/${now.getFullYear()}`;
+  const d = new Date();
+  return `${d.getMonth() + 1}/${d.getDate()}/${d.getFullYear()}`;
 }
 
 function fmtMoney(n: number): string {
   return `$${n.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 }
 
-// Draw the identical footer that appears on every page of the reference PDFs
+// ── Cell border drawing helper ──────────────────────────────────────────
+function cellBorder(
+  doc: PDFKit.PDFDocument,
+  x: number,
+  y: number,
+  w: number,
+  h: number,
+  fillColor?: string
+): void {
+  if (fillColor) {
+    doc.rect(x, y, w, h).fillColor(fillColor).fill();
+  }
+  doc.rect(x, y, w, h).strokeColor("#000000").lineWidth(0.5).stroke();
+}
+
+// Draw one full table row: each cell gets a border, text is drawn inside
+function tableRow(
+  doc: PDFKit.PDFDocument,
+  y: number,
+  rowH: number,
+  itemNum: string,
+  desc: string,
+  partNum: string,
+  qty: string,
+  listPrice: string,
+  netPrice: string,
+  extPrice: string,
+  bold = false
+): void {
+  const pad = 3; // inner padding
+
+  cellBorder(doc, TC.item,      y, TC.desc      - TC.item,      rowH);
+  cellBorder(doc, TC.desc,      y, TC.partNum   - TC.desc,      rowH);
+  cellBorder(doc, TC.partNum,   y, TC.qty       - TC.partNum,   rowH);
+  cellBorder(doc, TC.qty,       y, TC.listPrice - TC.qty,       rowH);
+  cellBorder(doc, TC.listPrice, y, TC.netPrice  - TC.listPrice, rowH);
+  cellBorder(doc, TC.netPrice,  y, TC.extPrice  - TC.netPrice,  rowH);
+  cellBorder(doc, TC.extPrice,  y, TC.right     - TC.extPrice,  rowH);
+
+  const font = bold ? FONT_BOLD : FONT_REG;
+  const ty = y + rowH / 2 - 5;
+
+  doc.font(font).fontSize(9).fillColor("#000000");
+  doc.text(itemNum,   TC.item      + pad, ty, { width: TC.desc      - TC.item      - pad * 2, align: "center" });
+  doc.text(desc,      TC.desc      + pad, ty, { width: TC.partNum   - TC.desc      - pad * 2, align: "left" });
+  doc.text(partNum,   TC.partNum   + pad, ty, { width: TC.qty       - TC.partNum   - pad * 2, align: "left" });
+  doc.text(qty,       TC.qty       + pad, ty, { width: TC.listPrice - TC.qty       - pad * 2, align: "center" });
+  doc.text(listPrice, TC.listPrice + pad, ty, { width: TC.netPrice  - TC.listPrice - pad * 2, align: "right" });
+  doc.text(netPrice,  TC.netPrice  + pad, ty, { width: TC.extPrice  - TC.netPrice  - pad * 2, align: "right" });
+  doc.text(extPrice,  TC.extPrice  + pad, ty, { width: TC.right     - TC.extPrice  - pad * 2, align: "right" });
+}
+
+// Draw the table header row (2-line labels, light gray bg)
+function tableHeader(doc: PDFKit.PDFDocument, y: number): void {
+  const pad = 3;
+  const bg  = "#E8E8E8";
+
+  cellBorder(doc, TC.item,      y, TC.desc      - TC.item,      HDR_H, bg);
+  cellBorder(doc, TC.desc,      y, TC.partNum   - TC.desc,      HDR_H, bg);
+  cellBorder(doc, TC.partNum,   y, TC.qty       - TC.partNum,   HDR_H, bg);
+  cellBorder(doc, TC.qty,       y, TC.listPrice - TC.qty,       HDR_H, bg);
+  cellBorder(doc, TC.listPrice, y, TC.netPrice  - TC.listPrice, HDR_H, bg);
+  cellBorder(doc, TC.netPrice,  y, TC.extPrice  - TC.netPrice,  HDR_H, bg);
+  cellBorder(doc, TC.extPrice,  y, TC.right     - TC.extPrice,  HDR_H, bg);
+
+  // Line 1
+  doc.font(FONT_BOLD).fontSize(9).fillColor("#000000");
+  doc.text("Item",           TC.item      + pad, y + 4,  { width: TC.desc      - TC.item      - pad * 2, align: "center" });
+  doc.text("Description",   TC.desc      + pad, y + 4,  { width: TC.partNum   - TC.desc      - pad * 2, align: "left" });
+  doc.text("Product",       TC.partNum   + pad, y + 4,  { width: TC.qty       - TC.partNum   - pad * 2, align: "left" });
+  doc.text("Qty",           TC.qty       + pad, y + 4,  { width: TC.listPrice - TC.qty       - pad * 2, align: "center" });
+  doc.text("List",          TC.listPrice + pad, y + 4,  { width: TC.netPrice  - TC.listPrice - pad * 2, align: "right" });
+  doc.text("Net",           TC.netPrice  + pad, y + 4,  { width: TC.extPrice  - TC.netPrice  - pad * 2, align: "right" });
+  doc.text("Ext. Price",    TC.extPrice  + pad, y + 4,  { width: TC.right     - TC.extPrice  - pad * 2, align: "right" });
+
+  // Line 2
+  doc.text("",              TC.item      + pad, y + 16, { width: TC.desc      - TC.item      - pad * 2, align: "center" });
+  doc.text("",              TC.desc      + pad, y + 16, { width: TC.partNum   - TC.desc      - pad * 2 });
+  doc.text("Number",        TC.partNum   + pad, y + 16, { width: TC.qty       - TC.partNum   - pad * 2, align: "left" });
+  doc.text("",              TC.qty       + pad, y + 16, { width: TC.listPrice - TC.qty       - pad * 2 });
+  doc.text("Price",         TC.listPrice + pad, y + 16, { width: TC.netPrice  - TC.listPrice - pad * 2, align: "right" });
+  doc.text("Price",         TC.netPrice  + pad, y + 16, { width: TC.extPrice  - TC.netPrice  - pad * 2, align: "right" });
+  doc.text("",              TC.extPrice  + pad, y + 16, { width: TC.right     - TC.extPrice  - pad * 2 });
+}
+
+// Draw the S&H + Total footer rows (merged label cell, value cell)
+function tableTotals(
+  doc: PDFKit.PDFDocument,
+  y: number,
+  shippingLabel: string,
+  totalLabel: string,
+  totalValue: string
+): number {
+  const pad = 3;
+
+  // S&H row: merged columns item..netPrice for label, extPrice for value
+  const shLabelW = TC.netPrice - TC.item;
+  cellBorder(doc, TC.item,    y,         shLabelW,                  ROW_H);
+  cellBorder(doc, TC.netPrice, y,         TC.right - TC.netPrice,    ROW_H);
+  doc.font(FONT_REG).fontSize(9).fillColor("#000000")
+     .text(shippingLabel, TC.item + pad, y + ROW_H / 2 - 5,
+       { width: shLabelW - pad * 2, align: "right" });
+  // S&H value cell (blank in reference PDFs)
+  y += ROW_H;
+
+  // Total row
+  const totLabelW = TC.extPrice - TC.item;
+  cellBorder(doc, TC.item,    y, totLabelW,               ROW_H);
+  cellBorder(doc, TC.extPrice, y, TC.right - TC.extPrice,  ROW_H);
+  doc.font(FONT_BOLD).fontSize(9).fillColor("#000000")
+     .text(totalLabel, TC.item + pad, y + ROW_H / 2 - 5,
+       { width: totLabelW - pad * 2, align: "right" });
+  doc.font(FONT_BOLD).fontSize(9)
+     .text(totalValue, TC.extPrice + pad, y + ROW_H / 2 - 5,
+       { width: TC.right - TC.extPrice - pad * 2, align: "right" });
+  y += ROW_H;
+
+  return y;
+}
+
+// Identical footer on every page
 function drawFooter(doc: PDFKit.PDFDocument): void {
-  const fy = FOOTER_Y;
-  doc.moveTo(36, fy).lineTo(R, fy).strokeColor("#000000").lineWidth(0.5).stroke();
+  doc.moveTo(ML, FOOTER_Y).lineTo(MR, FOOTER_Y)
+     .strokeColor("#000000").lineWidth(0.5).stroke();
   doc.font(FONT_REG).fontSize(8).fillColor("#000000")
      .text(
        "Cytek Biosciences Inc. | Offices in Fremont, CA 94538. 47215 Lakeview Blvd",
-       36, fy + 6, { width: PAGE_W - 72, align: "center" }
+       ML, FOOTER_Y + 5, { width: PAGE_W - ML * 2, align: "center" }
+     )
+     .text(
+       "Phone: (510) 657-0102 | Fax: (510) 657-0151 | www.cytekbio.com | email: technical.support@cytekbio.com",
+       ML, FOOTER_Y + 17, { width: PAGE_W - ML * 2, align: "center" }
      );
-  doc.text(
-    "Phone: (510) 657-0102 | Fax: (510) 657-0151 | www.cytekbio.com | email: technical.support@cytekbio.com",
-    36, fy + 18, { width: PAGE_W - 72, align: "center" }
-  );
 }
 
-// Draw date top-right (matches reference exactly)
-function drawDate(doc: PDFKit.PDFDocument, dateStr: string): void {
+// Date top-right on every page
+function drawPageDate(doc: PDFKit.PDFDocument, dateStr: string): void {
   doc.font(FONT_REG).fontSize(10).fillColor("#000000")
-     .text(dateStr, 36, 36, { width: PAGE_W - 72, align: "right" });
+     .text(dateStr, ML, ML, { width: PAGE_W - ML * 2, align: "right" });
 }
 
-// ── T&C text blocks ──────────────────────────────────────────────────────
-// Exact language from Cytek's official Time & Materials quotation documents
+// QUOTE# in a bordered rectangle (for quote page only)
+function drawQuoteNumBox(
+  doc: PDFKit.PDFDocument,
+  quoteNum: string,
+  x: number,
+  y: number
+): void {
+  const text  = `QUOTE#: ${quoteNum}`;
+  const boxW  = 180;
+  const boxH  = 18;
+  doc.rect(x, y, boxW, boxH).strokeColor("#000000").lineWidth(0.8).stroke();
+  doc.font(FONT_BOLD).fontSize(9).fillColor("#000000")
+     .text(text, x + 4, y + 4, { width: boxW - 8, align: "left" });
+}
+
+// ── T&C content ─────────────────────────────────────────────────────────
 const TC_INTRO = `These general terms and conditions (along with the quotation, "Terms") apply to the purchase of time and/materials by the customer ("Customer", "Purchaser", "Buyer", also "you" or "your") listed on the attached "quotation" and Cytek Biosciences, Inc. ("Cytek", also "our," "we" or "us").`;
 
 const TC_SECTIONS: Array<{ heading: string; body: string }> = [
@@ -124,10 +276,11 @@ const TC_SECTIONS: Array<{ heading: string; body: string }> = [
   },
 ];
 
+// ── Route handler ────────────────────────────────────────────────────────
 router.post("/generate", (req: Request, res: Response) => {
   try {
     const data = req.body as QuoteRequest;
-    const dateStr = fmtDate();
+    const dateStr  = fmtDate();
     const quoteNum = `Q-${Date.now().toString().slice(-8)}`;
 
     const doc = new PDFDocument({
@@ -148,66 +301,49 @@ router.post("/generate", (req: Request, res: Response) => {
     // PAGE 1 — QUOTE
     // ═══════════════════════════════════════════════════════════════
 
-    // Date top-right
-    drawDate(doc, dateStr);
+    // ── Logo top-left ────────────────────────────────────────────
+    const logoW = 160;
+    const logoH = Math.round(logoW * (431 / 1505)); // preserve aspect ratio ≈ 46pt
+    if (existsSync(LOGO_PATH)) {
+      doc.image(LOGO_PATH, ML, ML, { width: logoW });
+    }
 
-    // ── Customer Block (left) + Quote # (right) ──────────────────
-    let y = 100;
+    // ── Date top-right ───────────────────────────────────────────
+    drawPageDate(doc, dateStr);
 
-    // Customer name (bold)
+    // ── Customer block (left) ────────────────────────────────────
+    let y = ML + logoH + 14;
+
     doc.font(FONT_BOLD).fontSize(10).fillColor("#000000")
-       .text(data.customerName || "", L, y);
+       .text(data.customerName || "", ML, y);
+    y += 13;
 
-    // QUOTE# aligned right on the same line
-    doc.font(FONT_REG).fontSize(10)
-       .text(`QUOTE#: ${quoteNum}`, 36, y, { width: PAGE_W - 72, align: "right" });
-
-    y += 14;
-
-    // Facility / company
     if (data.facilityName) {
-      doc.font(FONT_REG).fontSize(10).text(data.facilityName, L, y);
+      doc.font(FONT_REG).fontSize(10).text(data.facilityName, ML, y);
       y += 13;
     }
 
-    // Address (may be multi-line)
     if (data.address) {
-      const addrH = doc.heightOfString(data.address, { width: 240, align: "left" });
-      doc.font(FONT_REG).fontSize(10)
-         .text(data.address, L, y, { width: 240 });
-      y += addrH + 4;
+      const addrLines = doc.heightOfString(data.address, { width: 250, align: "left" });
+      doc.font(FONT_REG).fontSize(10).text(data.address, ML, y, { width: 250 });
+      y += addrLines + 6;
     }
 
-    y += 20; // gap before table
+    // ── QUOTE# boxed — right side, vertically centered with customer name ──
+    const boxY = ML + logoH + 14; // same y as customer name
+    drawQuoteNumBox(doc, quoteNum, MR - 184, boxY);
 
-    // ── Table Headers ────────────────────────────────────────────
-    doc.font(FONT_REG).fontSize(9).fillColor("#000000");
+    y += 12; // gap before table
 
-    // Header row line 1
-    doc.text("Item",         TC.item,      y, { width: TC.desc - TC.item - 4,      align: "left" });
-    doc.text("Description",  TC.desc,      y, { width: TC.partNum - TC.desc - 4,   align: "left" });
-    doc.text("Product",      TC.partNum,   y, { width: TC.qty - TC.partNum - 4,    align: "left" });
-    doc.text("Qty",          TC.qty,       y, { width: TC.listPrice - TC.qty - 4,  align: "center" });
-    doc.text("List",         TC.listPrice, y, { width: TC.netPrice - TC.listPrice - 4, align: "right" });
-    doc.text("Net",          TC.netPrice,  y, { width: TC.extPrice - TC.netPrice - 4,  align: "right" });
-    doc.text("Ext. Price",   TC.extPrice,  y, { width: TC.right - TC.extPrice,     align: "right" });
-    y += 11;
+    // ── Items table ──────────────────────────────────────────────
+    tableHeader(doc, y);
+    y += HDR_H;
 
-    // Header row line 2 (sub-labels)
-    doc.text("",             TC.item,      y, { width: TC.desc - TC.item - 4 });
-    doc.text("",             TC.desc,      y, { width: TC.partNum - TC.desc - 4 });
-    doc.text("Number",       TC.partNum,   y, { width: TC.qty - TC.partNum - 4,    align: "left" });
-    doc.text("",             TC.qty,       y, { width: TC.listPrice - TC.qty - 4 });
-    doc.text("Price",        TC.listPrice, y, { width: TC.netPrice - TC.listPrice - 4, align: "right" });
-    doc.text("Price",        TC.netPrice,  y, { width: TC.extPrice - TC.netPrice - 4,  align: "right" });
-    y += 11;
-
-    // Thin horizontal rule under headers
-    doc.moveTo(L, y).lineTo(R, y).strokeColor("#000000").lineWidth(0.5).stroke();
-    y += 8;
-
-    // ── Line Items ───────────────────────────────────────────────
-    const allItems: Array<{ desc: string; partNum: string; qty: number; listPrice: number; netPrice: number }> = [];
+    // Build all items
+    const allItems: Array<{
+      desc: string; partNum: string;
+      qty: number; listPrice: number; netPrice: number;
+    }> = [];
 
     if (data.serviceType && (data.servicePrice ?? 0) > 0) {
       allItems.push({
@@ -234,74 +370,63 @@ router.post("/generate", (req: Request, res: Response) => {
     let extTotal = 0;
 
     if (allItems.length === 0) {
-      doc.font(FONT_REG).fontSize(9).fillColor("#000000")
-         .text("No items.", TC.desc, y);
-      y += 14;
+      tableRow(doc, y, ROW_H, "", "No items.", "", "", "", "", "");
+      y += ROW_H;
     } else {
-      allItems.forEach((item, i) => {
-        if (y > FOOTER_Y - 60) {
+      for (let i = 0; i < allItems.length; i++) {
+        const item = allItems[i];
+
+        // Check if we need a new page
+        if (y + ROW_H > FOOTER_Y - 60) {
           drawFooter(doc);
           doc.addPage({ margin: 0, size: "LETTER" });
-          drawDate(doc, dateStr);
-          doc.font(FONT_REG).fontSize(10).fillColor("#000000")
-             .text(`QUOTE#: ${quoteNum}`, 36, 36, { width: PAGE_W - 72, align: "right" });
-          y = 70;
+          drawPageDate(doc, dateStr);
+          doc.font(FONT_REG).fontSize(9).fillColor("#000000")
+             .text(`QUOTE#: ${quoteNum}`, ML, ML, { width: PAGE_W - ML * 2, align: "right" });
+          y = 62;
+          tableHeader(doc, y);
+          y += HDR_H;
         }
 
         const ext = item.qty * item.listPrice;
         extTotal += ext;
 
-        doc.font(FONT_REG).fontSize(9).fillColor("#000000");
-        // Item number centered
-        doc.text(String(i + 1), TC.item, y, { width: TC.desc - TC.item - 4, align: "center" });
-        // Description (may wrap)
-        const descH = doc.heightOfString(item.desc, { width: TC.partNum - TC.desc - 6, align: "left" });
-        doc.text(item.desc,         TC.desc,      y, { width: TC.partNum - TC.desc - 6,   align: "left" });
-        doc.text(item.partNum,      TC.partNum,   y, { width: TC.qty - TC.partNum - 4,    align: "left" });
-        doc.text(String(item.qty),  TC.qty,       y, { width: TC.listPrice - TC.qty - 4,  align: "center" });
-        doc.text(fmtMoney(item.listPrice), TC.listPrice, y, { width: TC.netPrice - TC.listPrice - 4, align: "right" });
-        // Net price: show only if different from list price and > 0; otherwise blank
-        if (item.netPrice > 0 && item.netPrice !== item.listPrice) {
-          doc.text(fmtMoney(item.netPrice), TC.netPrice, y, { width: TC.extPrice - TC.netPrice - 4, align: "right" });
-        }
-        doc.text(fmtMoney(ext), TC.extPrice, y, { width: TC.right - TC.extPrice, align: "right" });
+        // Show net price only if different from list
+        const netDisplay = (item.netPrice > 0 && item.netPrice !== item.listPrice)
+          ? fmtMoney(item.netPrice)
+          : "";
 
-        y += Math.max(descH, 13) + 4;
-      });
+        tableRow(
+          doc, y, ROW_H,
+          String(i + 1),
+          item.desc,
+          item.partNum,
+          String(item.qty),
+          fmtMoney(item.listPrice),
+          netDisplay,
+          fmtMoney(ext)
+        );
+        y += ROW_H;
+      }
     }
 
-    y += 8;
-
-    // ── Shipping & Handling + Total ──────────────────────────────
+    // ── S&H and Total rows ───────────────────────────────────────
     const shipping = data.shipping || 0;
     const total = extTotal + shipping;
 
-    // S&H line: right-aligned label, no dollar amount (matching reference)
-    doc.font(FONT_REG).fontSize(9).fillColor("#000000")
-       .text("Shipping & Handling Estimate", TC.listPrice, y, {
-         width: TC.right - TC.listPrice, align: "right"
-       });
-    y += 13;
+    y = tableTotals(doc, y, "Shipping & Handling Estimate", "Total", fmtMoney(total));
 
-    // Total line: label + value
-    doc.text("Total", TC.listPrice, y, {
-      width: TC.extPrice - TC.listPrice - 4, align: "right"
-    });
-    doc.text(fmtMoney(total), TC.extPrice, y, {
-      width: TC.right - TC.extPrice, align: "right"
-    });
-    y += 20;
-
-    // ── Notes (user-entered — e.g. "Pre-Inspection/Recertification") ──
+    // ── Notes (user-entered, below table) ────────────────────────
     if (data.notes && data.notes.trim()) {
+      y += 10;
       doc.font(FONT_REG).fontSize(9).fillColor("#000000")
-         .text(`      ${data.notes.trim()}`, L, y, { width: BODY_W });
-      y += doc.heightOfString(data.notes.trim(), { width: BODY_W }) + 14;
+         .text(`      ${data.notes.trim()}`, ML, y, { width: MR - ML });
+      y += doc.heightOfString(data.notes.trim(), { width: MR - ML }) + 10;
     }
 
-    y += 14;
+    y += 16;
 
-    // ── Standard bullet points (always present, matching reference) ──
+    // ── Standard bullet points ────────────────────────────────────
     const bullets = [
       "-All prices in USD",
       "-The above quotation does not include any applicable sales tax.",
@@ -310,7 +435,7 @@ router.post("/generate", (req: Request, res: Response) => {
     ];
     doc.font(FONT_REG).fontSize(9).fillColor("#000000");
     for (const b of bullets) {
-      doc.text(b, L, y, { width: BODY_W });
+      doc.text(b, ML, y, { width: MR - ML });
       y += 13;
     }
 
@@ -321,112 +446,77 @@ router.post("/generate", (req: Request, res: Response) => {
     // ═══════════════════════════════════════════════════════════════
     doc.addPage({ margin: 0, size: "LETTER" });
 
-    let ty = 36;
-    let firstTCPage = true;
+    // First T&C page: date only (no QUOTE# per reference)
+    drawPageDate(doc, dateStr);
+    let ty = 62;
+    let isFirstTCPage = true;
 
+    // T&C title (centered)
+    doc.font(FONT_BOLD).fontSize(11).fillColor("#000000")
+       .text("GENERAL TERMS AND CONDITIONS OF SALE", ML, ty, { width: PAGE_W - ML * 2, align: "center" });
+    ty += 16;
+    doc.font(FONT_BOLD).fontSize(10)
+       .text("(TIME AND MATERIALS)", ML, ty, { width: PAGE_W - ML * 2, align: "center" });
+    ty += 16;
+
+    // Helper: start a new T&C continuation page
+    const newTCPage = () => {
+      drawFooter(doc);
+      doc.addPage({ margin: 0, size: "LETTER" });
+      drawPageDate(doc, dateStr);
+      // QUOTE# top-right on every T&C page after the first
+      doc.font(FONT_REG).fontSize(10).fillColor("#000000")
+         .text(`QUOTE#: ${quoteNum}`, ML, ML, { width: PAGE_W - ML * 2, align: "right" });
+      ty = 62;
+      isFirstTCPage = false;
+    };
+
+    // Helper: ensure space or break page
     const ensureSpace = (needed: number) => {
       if (ty + needed > FOOTER_Y - 10) {
-        drawFooter(doc);
-        doc.addPage({ margin: 0, size: "LETTER" });
-        ty = 36;
-        // Date + quote number on continuation pages
-        drawDate(doc, dateStr);
-        doc.font(FONT_REG).fontSize(10).fillColor("#000000")
-           .text(`QUOTE#: ${quoteNum}`, 36, 36, { width: PAGE_W - 72, align: "right" });
-        ty = 62;
-        firstTCPage = false;
+        newTCPage();
       }
     };
 
-    // First T&C page: date top-right, then centered title
-    drawDate(doc, dateStr);
-    ty = 62;
-
-    // Title block
-    doc.font(FONT_BOLD).fontSize(11).fillColor("#000000")
-       .text("GENERAL TERMS AND CONDITIONS OF SALE", 36, ty, { width: PAGE_W - 72, align: "center" });
-    ty += 16;
-    doc.font(FONT_BOLD).fontSize(10)
-       .text("(TIME AND MATERIALS)", 36, ty, { width: PAGE_W - 72, align: "center" });
-    ty += 16;
-
     // Opening paragraph
-    const introH = doc.heightOfString(TC_INTRO, { width: PAGE_W - 72, align: "left" });
+    const introH = doc.font(FONT_REG).fontSize(9.5).heightOfString(TC_INTRO, { width: PAGE_W - ML * 2 });
     ensureSpace(introH + 8);
     doc.font(FONT_REG).fontSize(9.5).fillColor("#000000")
-       .text(TC_INTRO, 36, ty, { width: PAGE_W - 72 });
+       .text(TC_INTRO, ML, ty, { width: PAGE_W - ML * 2 });
     ty += introH + 10;
 
     // Numbered sections
     for (const sec of TC_SECTIONS) {
-      const sectionText = sec.body;
-      const headingH = 13;
-      const bodyH = doc.font(FONT_REG).fontSize(9.5).heightOfString(sectionText, { width: PAGE_W - 72 });
-      const totalH = headingH + bodyH + 12;
-
-      // If the entire section fits, render it; otherwise let it flow across pages
-      if (ty + Math.min(totalH, 80) > FOOTER_Y - 10) {
-        drawFooter(doc);
-        doc.addPage({ margin: 0, size: "LETTER" });
-        drawDate(doc, dateStr);
-        doc.font(FONT_REG).fontSize(10).fillColor("#000000")
-           .text(`QUOTE#: ${quoteNum}`, 36, 36, { width: PAGE_W - 72, align: "right" });
-        ty = 62;
-        firstTCPage = false;
-      }
-
-      // Render heading inline (bold prefix + body)
-      // Build full paragraph: "1. HEADING: body text"
-      const fullPara = `${sec.heading} ${sec.body}`;
-      const paraH = doc.font(FONT_REG).fontSize(9.5).heightOfString(fullPara, { width: PAGE_W - 72 });
-
-      // If paragraph would overflow, check if we need a new page
-      if (ty + paraH > FOOTER_Y - 10 && paraH < FOOTER_Y - 80) {
-        drawFooter(doc);
-        doc.addPage({ margin: 0, size: "LETTER" });
-        drawDate(doc, dateStr);
-        doc.font(FONT_REG).fontSize(10).fillColor("#000000")
-           .text(`QUOTE#: ${quoteNum}`, 36, 36, { width: PAGE_W - 72, align: "right" });
-        ty = 62;
-        firstTCPage = false;
-      }
-
-      // Render the section — heading bold, body regular, inline
-      // We do this by rendering the heading bold then the body regular on the same flow
-      doc.font(FONT_BOLD).fontSize(9.5).fillColor("#000000")
-         .text(sec.heading + " ", 36, ty, { width: PAGE_W - 72, continued: true });
-      doc.font(FONT_REG);
-
-      // Handle multi-paragraph body (split by \n\n)
       const paragraphs = sec.body.split("\n\n");
-      paragraphs.forEach((para, pi) => {
-        if (pi === 0) {
-          // First paragraph continues from heading
-          doc.text(para, { width: PAGE_W - 72, continued: false });
-          ty += doc.heightOfString(sec.heading + " " + para, { width: PAGE_W - 72 }) + 4;
-        } else {
-          // Subsequent paragraphs in same section
-          if (ty + doc.heightOfString(para, { width: PAGE_W - 72 }) > FOOTER_Y - 10) {
-            drawFooter(doc);
-            doc.addPage({ margin: 0, size: "LETTER" });
-            drawDate(doc, dateStr);
-            doc.font(FONT_REG).fontSize(10).fillColor("#000000")
-               .text(`QUOTE#: ${quoteNum}`, 36, 36, { width: PAGE_W - 72, align: "right" });
-            ty = 62;
-            firstTCPage = false;
-          }
-          doc.font(FONT_REG).fontSize(9.5).fillColor("#000000")
-             .text(para, 36, ty, { width: PAGE_W - 72 });
-          ty += doc.heightOfString(para, { width: PAGE_W - 72 }) + 4;
-        }
-      });
 
-      ty += 6; // gap between sections
+      // Measure the first paragraph (heading + first body para) together
+      const firstParaText = `${sec.heading} ${paragraphs[0]}`;
+      const firstParaH = doc.font(FONT_REG).fontSize(9.5).heightOfString(firstParaText, { width: PAGE_W - ML * 2 });
+
+      ensureSpace(Math.min(firstParaH, 60));
+
+      // Render heading (bold) continued into first paragraph (regular)
+      doc.font(FONT_BOLD).fontSize(9.5).fillColor("#000000")
+         .text(`${sec.heading} `, ML, ty, { width: PAGE_W - ML * 2, continued: true });
+      doc.font(FONT_REG)
+         .text(paragraphs[0], { continued: false });
+      ty += firstParaH + 4;
+
+      // Render remaining paragraphs in the same section
+      for (let pi = 1; pi < paragraphs.length; pi++) {
+        const paraH = doc.font(FONT_REG).fontSize(9.5).heightOfString(paragraphs[pi], { width: PAGE_W - ML * 2 });
+        ensureSpace(paraH + 4);
+        doc.font(FONT_REG).fontSize(9.5).fillColor("#000000")
+           .text(paragraphs[pi], ML, ty, { width: PAGE_W - ML * 2 });
+        ty += paraH + 4;
+      }
+
+      ty += 6; // inter-section gap
     }
 
     drawFooter(doc);
-
     doc.end();
+
   } catch (err) {
     console.error("Error generating quote PDF:", err);
     if (!res.headersSent) {
