@@ -48,6 +48,11 @@ let _parts: PartRecord[] | null = null;
 
 function getWorkbook(): xlsx.WorkBook {
   if (!_workbook) {
+    if (!existsSync(DATA_FILE)) {
+      throw new Error(
+        `Quoting data file not found at "${DATA_FILE}". Make sure quoting_data.xlsx exists in src/data/.`
+      );
+    }
     _workbook = xlsx.readFile(DATA_FILE);
   }
   return _workbook;
@@ -60,10 +65,10 @@ export function getAssets(): AssetRecord[] {
   const sheet = wb.Sheets["Asset Data"];
   if (!sheet) return [];
 
-  const rows = xlsx.utils.sheet_to_json<Record<string, string>>(sheet, {
+  const rows = xlsx.utils.sheet_to_json<string[]>(sheet, {
     header: 1,
     raw: false,
-  }) as string[][];
+  });
 
   // Row 0 is header
   // Col mapping based on actual headers found:
@@ -119,10 +124,10 @@ export function getParts(): PartRecord[] {
   const sheet = wb.Sheets["Pricing Data"];
   if (!sheet) return [];
 
-  const rows = xlsx.utils.sheet_to_json<Record<string, string>>(sheet, {
+  const rows = xlsx.utils.sheet_to_json<string[]>(sheet, {
     header: 1,
     raw: false,
-  }) as string[][];
+  });
 
   // Headers: A=Display Name, B=Last Purchase Price, C=Sale Unit, D=Unit Price,
   // E=Price Level, F=Currency, G=Part Number, H=Item Internal ID

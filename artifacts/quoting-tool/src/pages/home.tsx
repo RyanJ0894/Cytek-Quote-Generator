@@ -3,6 +3,7 @@ import { QuoteForm } from "@/components/QuoteForm";
 import { ExcelUpload, type ParsedUploadResult } from "@/components/ExcelUpload";
 import { Sparkles, ArrowLeft } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
+import { activeCompany } from "@workspace/config";
 
 type AppStep = "upload" | "form";
 
@@ -32,8 +33,8 @@ export default function Home() {
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="flex items-center justify-between h-16">
             <img
-              src="/cytek-logo.png"
-              alt="Cytek Quote Generator"
+              src={`/${activeCompany.logo.fileName}`}
+              alt={`${activeCompany.shortName} Quote Generator`}
               className="h-10 w-auto object-contain"
             />
 

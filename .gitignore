@@ -47,3 +47,13 @@ Thumbs.db
 # Replit
 .cache/
 .local/
+.agents/
+
+# Generated PDF output — the quote generator produces these at runtime,
+# they should never be committed to the repo.
+/*.pdf
+
+# Replit AI chat attachments / reference material (screenshots, sample
+# spreadsheets, sample PDFs) uploaded during development — not read by
+# the application at build or runtime.
+/attached_assets/

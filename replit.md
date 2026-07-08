@@ -1,8 +1,10 @@
-# Cytek Quoting Tool
+# Quote Magic
 
 ## Overview
 
-A service quoting tool for Cytek Biosciences field service engineers. Enter a serial number, get all customer/contract data auto-filled from the Excel spreadsheet, add parts from the pricing catalog, and generate a PDF quote.
+Quote Magic is a configurable service quoting and PDF contract generator. Enter a serial number, get all customer/contract data auto-filled from an Excel spreadsheet, add parts from a pricing catalog, and generate a branded PDF quote + terms & conditions document.
+
+This Replit instance is currently configured for **Cytek Biosciences** (see `lib/config/src/companies/cytek.ts`) — the underlying product is company-agnostic. See `DEVELOPMENT_NOTES.md` for the architecture and `README.md` for setup instructions.
 
 ## Stack
 
@@ -14,29 +16,30 @@ A service quoting tool for Cytek Biosciences field service engineers. Enter a se
 - **Frontend**: React + Vite (Tailwind CSS, React Query, React Hook Form, Framer Motion)
 - **PDF generation**: pdfkit
 - **Excel parsing**: xlsx (reads `artifacts/api-server/src/data/quoting_data.xlsx`)
-- **Validation**: Zod (`zod/v4`), `drizzle-zod`
+- **Validation**: Zod (`zod/v4`)
 - **API codegen**: Orval (from OpenAPI spec)
 - **Build**: esbuild (CJS bundle)
 
 ## Structure
 
 ```text
-artifacts-monorepo/
+quote-magic/
 ├── artifacts/
 │   ├── api-server/          # Express API server
-│   │   ├── src/data/        # quoting_data.xlsx (source data)
-│   │   ├── src/lib/         # excelParser.ts (xlsx data loading)
-│   │   └── src/routes/      # assets.ts, parts.ts, quotes.ts (PDF)
+│   │   ├── src/data/        # quoting_data.xlsx, logo (source data)
+│   │   ├── src/lib/         # excelParser.ts, fseUploadParser.ts, pdf.ts
+│   │   └── src/routes/      # assets.ts, parts.ts, quotes.ts, upload.ts
 │   └── quoting-tool/        # React + Vite frontend
 │       └── src/
-│           ├── components/  # QuoteForm.tsx, Autocomplete.tsx
+│           ├── components/  # QuoteForm.tsx, ExcelUpload.tsx, Autocomplete.tsx
 │           └── pages/       # home.tsx
 ├── lib/
-│   ├── api-spec/            # OpenAPI spec + Orval codegen config
-│   ├── api-client-react/    # Generated React Query hooks
-│   ├── api-zod/             # Generated Zod schemas
-│   └── db/                  # Drizzle ORM (not used yet)
-└── scripts/                 # Utility scripts
+│   ├── config/               # @workspace/config — company/branding config (single source of truth)
+│   ├── api-spec/              # OpenAPI spec + Orval codegen config
+│   ├── api-client-react/      # Generated React Query hooks
+│   ├── api-zod/                # Generated Zod schemas
+│   └── db/                     # Drizzle ORM scaffold (not wired up yet — reserved for future accounts/multi-tenancy)
+└── scripts/                   # Utility scripts
 ```
 
 ## Key Features
@@ -53,6 +56,8 @@ artifacts-monorepo/
 - `GET /api/assets/lookup?serial=xxx` — Asset lookup by serial
 - `GET /api/parts` — Full parts catalog
 - `POST /api/quotes/generate` — Generate PDF quote (returns `application/pdf`)
+- `POST /api/quotes/parse-upload` — Parse an uploaded FSE Excel workbook into form data
+- `GET /api/healthz` — Health check
 
 ## Data Source
 
