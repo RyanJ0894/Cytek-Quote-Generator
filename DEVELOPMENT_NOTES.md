@@ -84,6 +84,16 @@ The logo image itself and the on-screen Tailwind color theme (`artifacts/quoting
 - The terms & conditions renderer measures text height with `doc.heightOfString()` before drawing, to decide whether a section needs a new page.
 - Colors, fonts, and logo are all parameters sourced from `CompanyConfig` at the top of `quotes.ts` (`TEXT_COLOR`, `BORDER_COLOR`, `HEADER_BG`, `LOGO_PATH`) rather than being hardcoded inside `pdf.ts`.
 
+## Workspace Package Resolution — Don't Add TS Project References to `artifacts/*`
+
+`artifacts/api-server/tsconfig.json` and `artifacts/quoting-tool/tsconfig.json` intentionally do **not** declare a `"references"` array pointing at the `lib/*` packages they depend on (`@workspace/api-zod`, `@workspace/config`, etc.), even though those are composite TypeScript projects (`"composite": true` in their own tsconfigs). This is deliberate, not an oversight.
+
+Each `lib/*` package's `package.json` points its `exports` field straight at TypeScript source (e.g. `"exports": { ".": "./src/index.ts" }`), so plain module resolution (`moduleResolution: "bundler"`) reads the `.ts` source directly — no build step required. But if a consuming tsconfig declares that same package under `"references"`, TypeScript switches to stricter project-reference semantics and requires the referenced package's `.d.ts` output to already exist on disk (`dist/index.d.ts`), or it fails with **`TS6305: Output file '.../dist/index.d.ts' has not been built from source file '...'`**.
+
+Our own `pnpm run typecheck` never surfaces this, because the root script runs `tsc --build` over `lib/*` first (via the root `tsconfig.json`'s references), which writes those `dist/*.d.ts` files before the per-package `artifacts/*` typecheck runs — masking the problem. But `dist/` is gitignored, so it doesn't exist on a fresh checkout, and **any tool that type-checks or compiles `artifacts/api-server` or `artifacts/quoting-tool` in isolation will hit TS6305** the moment those tsconfigs declare project references to unbuilt `lib/*` packages. This is exactly what broke a Vercel deployment scoped to `artifacts/api-server` as its Root Directory: Vercel's Node.js builder runs its own standalone `tsc` compile of that subtree (separate from our `pnpm run build`/esbuild step) and has no reason to build `lib/*` first.
+
+If you add a new `lib/*` dependency to `artifacts/api-server` or `artifacts/quoting-tool`, just add it as a normal `workspace:*` dependency in `package.json` — do **not** also add it to that tsconfig's `"references"` array.
+
 ## Known Limitations
 
 - **No automated tests.** Correctness currently relies on manual verification.
