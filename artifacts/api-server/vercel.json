@@ -1,0 +1,11 @@
+{
+  "buildCommand": "pnpm run build",
+  "functions": {
+    "dist/vercel.cjs": {
+      "includeFiles": "src/data/**"
+    }
+  },
+  "rewrites": [
+    { "source": "/(.*)", "destination": "/dist/vercel.cjs" }
+  ]
+}

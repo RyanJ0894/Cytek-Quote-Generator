@@ -78,7 +78,13 @@ pnpm run build
 ```
 
 - The frontend build (`pnpm --filter @workspace/quoting-tool run build`) outputs a static bundle to `artifacts/quoting-tool/dist/public`, servable by any static file host.
-- The API server build (`pnpm --filter @workspace/api-server run build`) bundles to `artifacts/api-server/dist/index.cjs` via esbuild and is started with `node artifacts/api-server/dist/index.cjs`.
+- The API server build (`pnpm --filter @workspace/api-server run build`) produces **two** bundles via esbuild:
+  - `artifacts/api-server/dist/index.cjs` — a self-starting server (`app.listen()`), used by Replit and any host that runs a persistent Node process: `node artifacts/api-server/dist/index.cjs`.
+  - `artifacts/api-server/dist/vercel.cjs` — exports the Express app directly (no `.listen()`), for platforms that run the app as a serverless/edge function (see `artifacts/api-server/vercel.json`).
+
+### Deploying to Vercel
+
+Set the project's Root Directory to `artifacts/api-server` and Vercel will pick up `vercel.json` automatically. Do **not** rely on Vercel's automatic "Express" framework preset / zero-config detection — it performs its own TypeScript compilation of the source tree that does not correctly resolve this monorepo's workspace packages (see `DEVELOPMENT_NOTES.md` for why). `vercel.json` instead points Vercel at the pre-built `dist/vercel.cjs`, sidestepping that entirely.
 
 ## Folder Structure
 

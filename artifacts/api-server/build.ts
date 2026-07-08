@@ -41,6 +41,26 @@ async function buildAll() {
     external: externals,
     logLevel: "info",
   });
+
+  // Vercel-specific bundle: exports the Express app (no app.listen()) so
+  // Vercel can run it as a Function. See src/vercel.ts for why this exists.
+  // The footer normalizes esbuild's ESM-interop output ({ default: app })
+  // down to a plain `module.exports = app`, so Vercel's Node runtime gets
+  // an unambiguous, directly-callable Express app.
+  await esbuild({
+    entryPoints: [path.resolve(__dirname, "src/vercel.ts")],
+    platform: "node",
+    bundle: true,
+    format: "cjs",
+    outfile: path.resolve(distDir, "vercel.cjs"),
+    define: {
+      "process.env.NODE_ENV": '"production"',
+    },
+    minify: true,
+    external: externals,
+    footer: { js: "module.exports = module.exports.default;" },
+    logLevel: "info",
+  });
 }
 
 buildAll().catch((err) => {
