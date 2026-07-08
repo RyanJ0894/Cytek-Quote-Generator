@@ -1,4 +1,5 @@
 {
+  "framework": null,
   "buildCommand": "pnpm run build",
   "functions": {
     "dist/vercel.cjs": {
