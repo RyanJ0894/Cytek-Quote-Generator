@@ -62,6 +62,8 @@ Drag-and-drop / file-picker upload UI that posts to `POST /api/quotes/parse-uplo
 
 **To onboard a new company today:** add `lib/config/src/companies/<id>.ts` implementing `CompanyConfig`, register it in the `companies` map in `lib/config/src/index.ts`, drop its logo file into both `artifacts/api-server/src/data/` and `artifacts/quoting-tool/public/`, and set `COMPANY_ID=<id>` when starting both services. No other code changes needed.
 
+`lib/config` is bundled into **both** the Node API server and the browser frontend. `process` doesn't exist in the browser, so `src/index.ts` guards its env var read with `typeof process === "undefined"` rather than accessing `process.env` directly — keep that guard if you add more environment-driven config here.
+
 The logo image itself and the on-screen Tailwind color theme (`artifacts/quoting-tool/src/index.css`) are **not yet** driven by `CompanyConfig` — see Known Limitations.
 
 ## Quote Generation Pipeline

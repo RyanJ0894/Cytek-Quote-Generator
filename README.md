@@ -92,7 +92,7 @@ quote-magic/
 │   │   └── src/middlewares/     # reserved for future Express middleware
 │   └── quoting-tool/            # React + Vite frontend
 │       └── src/
-│           ├── components/      # QuoteForm.tsx, ExcelUpload.tsx, Autocomplete.tsx, ui/ (design system primitives)
+│           ├── components/      # QuoteForm.tsx, ExcelUpload.tsx, Autocomplete.tsx, ui/ (toast + tooltip primitives)
 │           ├── pages/           # home.tsx, not-found.tsx
 │           ├── hooks/
 │           └── lib/             # frontend-only utilities (cn, formatCurrency)
