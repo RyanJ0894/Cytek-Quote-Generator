@@ -80,11 +80,23 @@ pnpm run build
 - The frontend build (`pnpm --filter @workspace/quoting-tool run build`) outputs a static bundle to `artifacts/quoting-tool/dist/public`, servable by any static file host.
 - The API server build (`pnpm --filter @workspace/api-server run build`) produces **two** bundles via esbuild:
   - `artifacts/api-server/dist/index.cjs` — a self-starting server (`app.listen()`), used by Replit and any host that runs a persistent Node process: `node artifacts/api-server/dist/index.cjs`.
-  - `artifacts/api-server/dist/vercel.cjs` — exports the Express app directly (no `.listen()`), for platforms that run the app as a serverless/edge function (see `artifacts/api-server/vercel.json`).
+  - `artifacts/api-server/dist/vercel.cjs` — exports the Express app directly (no `.listen()`), for platforms that run the app as a serverless function. On Vercel it is loaded by the root `api/index.js` shim (see `vercel.json` and "Deploying to Vercel" below).
 
 ### Deploying to Vercel
 
-Set the project's Root Directory to `artifacts/api-server` and Vercel will pick up `vercel.json` automatically. Do **not** rely on Vercel's automatic "Express" framework preset / zero-config detection — it performs its own TypeScript compilation of the source tree that does not correctly resolve this monorepo's workspace packages (see `DEVELOPMENT_NOTES.md` for why). `vercel.json` instead points Vercel at the pre-built `dist/vercel.cjs`, sidestepping that entirely.
+The repo is set up to deploy as **one Vercel project** that serves both the frontend and the API from the same domain (`/` → static React app, `/api/*` → Express running as a Serverless Function). Configuration lives in the root `vercel.json`.
+
+1. In Vercel, **Import** the GitHub repository (`RyanJ0894/Cytek-Quote-Generator`).
+2. Leave **Root Directory** as the repository root (do **not** set it to `artifacts/api-server` — an older setup did this and no longer applies). Framework Preset should show "Other".
+3. Leave Build Command, Output Directory and Install Command on their defaults — `vercel.json` overrides them (`pnpm run build:vercel`, `artifacts/quoting-tool/dist/public`, `pnpm install`).
+4. No environment variables are required. `COMPANY_ID` is optional (defaults to `cytek`).
+5. Deploy. Every push to the production branch redeploys automatically.
+
+How it works: `pnpm run build:vercel` builds the static frontend and the API bundle (`artifacts/api-server/dist/vercel.cjs`). `api/index.js` is a one-line shim that re-exports that pre-built Express app, because Vercel only creates functions from files under `api/`. `vercel.json` includes `artifacts/api-server/src/data/**` (the Excel catalog and logo) in the function bundle and rewrites `/api/*` to it. Do **not** rely on Vercel's "Express" framework preset / zero-config TypeScript compilation — it cannot resolve this monorepo's workspace packages (see `DEVELOPMENT_NOTES.md`).
+
+You can reproduce the exact Vercel build locally with `npx vercel build` from the repo root (output lands in `.vercel/output`, which is gitignored).
+
+Vercel-specific limits to be aware of: request bodies are capped at 4.5 MB (the FSE upload form allows up to 20 MB elsewhere), and the function has a 30 s `maxDuration`.
 
 ## Folder Structure
 

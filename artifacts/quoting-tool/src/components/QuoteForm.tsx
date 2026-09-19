@@ -17,6 +17,7 @@ import type { ParsedUploadResult } from "./ExcelUpload";
 import { 
   useListSerials, 
   useLookupAsset, 
+  getLookupAssetQueryKey,
   useListParts, 
   useGenerateQuote,
   type QuoteRequest,
@@ -164,7 +165,13 @@ export function QuoteForm({ parsedData }: QuoteFormProps) {
   // Conditionally fetch asset data when a serial number is provided
   const { data: assetData, isFetching: isFetchingAsset } = useLookupAsset(
     { serial: serialNumber },
-    { query: { enabled: !!serialNumber && serialNumber.length > 2, retry: false } }
+    {
+      query: {
+        queryKey: getLookupAssetQueryKey({ serial: serialNumber }),
+        enabled: !!serialNumber && serialNumber.length > 2,
+        retry: false,
+      },
+    }
   );
 
   // When parsed data is provided, show a confirmation toast once

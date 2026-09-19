@@ -17,5 +17,7 @@ export interface QuoteRequest {
   serviceType?: string;
   servicePrice?: number;
   parts: QuoteLineItem[];
+  /** Shipping & handling charge added to the quote total. */
+  shipping?: number;
   notes?: string;
 }
