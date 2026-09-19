@@ -234,6 +234,9 @@ components:
           type: array
           items:
             $ref: "#/components/schemas/QuoteLineItem"
+        shipping:
+          type: number
+          description: Shipping & handling charge added to the quote total.
         notes:
           type: string
       required:

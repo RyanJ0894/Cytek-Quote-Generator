@@ -84,5 +84,9 @@ export const GenerateQuoteBody = zod.object({
       unitPrice: zod.number(),
     }),
   ),
+  shipping: zod
+    .number()
+    .optional()
+    .describe("Shipping & handling charge added to the quote total."),
   notes: zod.string().optional(),
 });
