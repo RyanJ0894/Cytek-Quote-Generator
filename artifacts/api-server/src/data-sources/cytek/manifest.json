@@ -1,0 +1,119 @@
+{
+  "id": "cytek",
+  "name": "Cytek",
+  "importedAt": "2026-09-19T23:22:40.452Z",
+  "sources": [
+    {
+      "role": "primary",
+      "fileName": "cytek-quoting-tool-rev6.xlsx",
+      "label": "Cytek Quoting Tool - Rev6.xlsx",
+      "sha256": "23b97190128e7a0969ef2450476479c4ac0122efca1c3bde5e4622d5aee67d22",
+      "sheetsUsed": [
+        "Asset Data",
+        "Pricing Data"
+      ]
+    },
+    {
+      "role": "supplement",
+      "fileName": "cytek-quoting-tool-rev5.xlsx",
+      "label": "Cytek Quoting Tool - Rev5.xlsx",
+      "sha256": "6a4eaf0781a74cbab40f044ce1ad511371f119ccac2ee4d05ac2b081456193b0",
+      "sheetsUsed": [
+        "Asset Data"
+      ]
+    }
+  ],
+  "counts": {
+    "assets": 9635,
+    "products": 5178,
+    "services": 163,
+    "assetsEnrichedFromSupplement": 2542,
+    "assetsEnrichedWithDifferentAccountName": 263,
+    "assetsFacilityDefaultedToAccount": 7093
+  },
+  "rejected": {
+    "asset: only in supplement (not in primary), skipped": {
+      "count": 1043,
+      "samples": [
+        "8470060146",
+        "7200150754",
+        "6735125084",
+        "6735-R8075",
+        "7200121461",
+        "8470130126",
+        "7200121505",
+        "7200121344",
+        "7200121000",
+        "8470060152"
+      ]
+    },
+    "product: no unit price": {
+      "count": 242,
+      "samples": [
+        "Basic contract deductible",
+        "Flat Top Viewing Tool",
+        "MMC 9616K11",
+        "355nm Aurora Field Upgrade Kit - Wuxi",
+        "Aurora 51 Channel with Fluidics Bucket- Wuxi",
+        "Northern Lights 41 Channel with Fluidics Bucket- Wuxi",
+        "Optics Module Assy",
+        "5 Laser Cable Assy Complete",
+        "5 Laser Cable Assy Complete",
+        "Aurora Platform 4 Laser"
+      ]
+    },
+    "product: blank display name": {
+      "count": 15,
+      "samples": [
+        "(blank row)",
+        "Pre-amp Board Test Station",
+        "Shipping Allowance Discount (25%)",
+        "Tariff Surcharge - Instrument",
+        "Tariff Surcharge - Service",
+        "Travel",
+        "Warranty Discount",
+        "Warranty Discount INACTIVE",
+        "Website Discount",
+        "Website Discount (10%)"
+      ]
+    }
+  },
+  "fieldMappings": {
+    "assets": {
+      "serialNumber": "primary Asset Data!Serial Number",
+      "assetName": "= serialNumber",
+      "accountName": "primary Asset Data!Account Name",
+      "productName": "primary Asset Data!Product: Product Name",
+      "contractNumber": "primary Asset Data!Synced Contract: Contract Number",
+      "contractType": "primary Asset Data!Synced Contract: Contract Type",
+      "contractEndDate": "primary Asset Data!Synced Contract: Contract End Date (ISO date)",
+      "contractStatus": "derived at lookup: Activated if contractEndDate >= today, Expired if past, blank if none",
+      "country": "primary Asset Data!Country",
+      "assetStatus": "primary Asset Data!Status",
+      "installDate": "primary Asset Data!Install Date (ISO date)",
+      "facilityName": "supplement Asset Data!shortened facility name; falls back to accountName",
+      "street": "supplement Asset Data!Street",
+      "city": "supplement Asset Data!City",
+      "stateZip": "supplement Asset Data!State and Zip code",
+      "region": "supplement Asset Data!Region",
+      "serviceTerritory": "supplement Asset Data!Service Territory: Name",
+      "primaryTechnician": "supplement Asset Data!Primary Service Technician (else Primary FAS)",
+      "contactName": "supplement Asset Data!Contact: Full Name",
+      "contactEmail": "supplement Asset Data!Contact: Email"
+    },
+    "products": {
+      "partName": "primary Pricing Data!Display Name",
+      "partNumber": "primary Pricing Data!Part Number",
+      "listPrice": "primary Pricing Data!Unit Price",
+      "netPrice": "= listPrice (the workbook has no customer net price; 'Last Purchase Price' is internal cost and is not imported)",
+      "unit": "primary Pricing Data!Sale Unit",
+      "category": "Service if Sale Unit is Year/2 Years/3 Years/Hour or Item Internal ID is blank; otherwise Parts"
+    }
+  },
+  "notes": [
+    "Underlying data sheets are read directly; the workbook's FSE Input VLOOKUP formulas (#REF! in Rev6) are not used.",
+    "Rev6's Asset Data export has no facility code, address, contact or territory columns; those are carried over from the Rev5 supplement for serials present in Rev6.",
+    "Assets present only in the supplement are not imported: the primary workbook defines which assets exist.",
+    "Where the account name changed between Rev5 and Rev6, the carried-over address/contact may be out of date; all populated fields remain editable in the form."
+  ]
+}

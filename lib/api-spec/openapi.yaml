@@ -15,7 +15,22 @@ tags:
     description: Parts catalog
   - name: quotes
     description: Quote generation
+  - name: data-sources
+    description: The asset/pricing data source behind Manual Mode
 paths:
+  /data-source:
+    get:
+      operationId: getDataSource
+      tags: [data-sources]
+      summary: Describe the default data source (name, import date, record counts)
+      responses:
+        "200":
+          description: Data source summary
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DataSourceSummary"
+
   /healthz:
     get:
       operationId: healthCheck
@@ -145,10 +160,49 @@ components:
           type: string
         primaryTechnician:
           type: string
+        contractEndDate:
+          type: string
+          description: ISO date (YYYY-MM-DD) or empty when no contract.
+        country:
+          type: string
+        assetStatus:
+          type: string
+          description: Asset lifecycle status from the source, e.g. "Installed".
+        installDate:
+          type: string
+          description: ISO date (YYYY-MM-DD) or empty.
       required:
         - serialNumber
         - assetName
         - accountName
+
+    DataSourceSummary:
+      type: object
+      properties:
+        id:
+          type: string
+        name:
+          type: string
+        isDefault:
+          type: boolean
+        importedAt:
+          type: string
+        sourceFiles:
+          type: array
+          items:
+            type: string
+        assetCount:
+          type: integer
+        productCount:
+          type: integer
+      required:
+        - id
+        - name
+        - isDefault
+        - importedAt
+        - sourceFiles
+        - assetCount
+        - productCount
 
     AssetLookupResult:
       type: object
@@ -181,6 +235,10 @@ components:
           type: number
         category:
           type: string
+          description: '"Service" or "Parts".'
+        unit:
+          type: string
+          description: Sale unit from the source (e.g. "Each", "Year").
       required:
         - partName
         - listPrice

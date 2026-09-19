@@ -4,6 +4,7 @@ import assetsRouter from "./assets.js";
 import partsRouter from "./parts.js";
 import quotesRouter from "./quotes.js";
 import uploadRouter from "./upload.js";
+import dataSourceRouter from "./data-source.js";
 
 const router: IRouter = Router();
 
@@ -12,5 +13,6 @@ router.use("/assets", assetsRouter);
 router.use("/parts", partsRouter);
 router.use("/quotes", quotesRouter);
 router.use("/quotes", uploadRouter);
+router.use("/data-source", dataSourceRouter);
 
 export default router;

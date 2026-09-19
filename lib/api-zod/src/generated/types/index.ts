@@ -8,6 +8,7 @@
 
 export * from "./assetData";
 export * from "./assetLookupResult";
+export * from "./dataSourceSummary";
 export * from "./errorResponse";
 export * from "./healthStatus";
 export * from "./lookupAssetParams";

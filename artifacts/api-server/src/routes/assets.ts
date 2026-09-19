@@ -1,14 +1,11 @@
 import { Router, type IRouter } from "express";
-import {
-  getAllSerials,
-  lookupAssetBySerial,
-} from "../lib/excelParser.js";
+import { getDefaultDataSource } from "../data-sources/registry.js";
 
 const router: IRouter = Router();
 
 router.get("/serials", (_req, res) => {
   try {
-    const serials = getAllSerials();
+    const serials = getDefaultDataSource().listSerials();
     res.json({ serials });
   } catch (err) {
     console.error("Error fetching serials:", err);
@@ -24,7 +21,7 @@ router.get("/lookup", (req, res) => {
   }
 
   try {
-    const asset = lookupAssetBySerial(serial);
+    const asset = getDefaultDataSource().lookupAsset(serial);
     if (!asset) {
       res.status(404).json({ error: `No asset found for serial: ${serial}` });
       return;

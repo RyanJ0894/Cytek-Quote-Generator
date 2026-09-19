@@ -11,5 +11,8 @@ export interface PartItem {
   partNumber?: string;
   listPrice: number;
   netPrice?: number;
+  /** "Service" or "Parts". */
   category?: string;
+  /** Sale unit from the source (e.g. "Each", "Year"). */
+  unit?: string;
 }

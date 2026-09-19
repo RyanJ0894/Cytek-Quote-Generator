@@ -23,4 +23,11 @@ export interface AssetData {
   region?: string;
   serviceTerritory?: string;
   primaryTechnician?: string;
+  /** ISO date (YYYY-MM-DD) or empty when no contract. */
+  contractEndDate?: string;
+  country?: string;
+  /** Asset lifecycle status from the source, e.g. "Installed". */
+  assetStatus?: string;
+  /** ISO date (YYYY-MM-DD) or empty. */
+  installDate?: string;
 }

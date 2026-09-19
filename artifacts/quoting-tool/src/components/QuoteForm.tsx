@@ -1,4 +1,4 @@
-import React, { useEffect } from "react";
+import React, { useEffect, useMemo } from "react";
 import { useForm, useFieldArray } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
@@ -6,7 +6,7 @@ import { motion, AnimatePresence } from "framer-motion";
 import { 
   Building2, User, MapPin, Search, 
   Settings2, Plus, Trash2, FileText, 
-  FileBox, Calculator, Loader2, ChevronDown
+  FileBox, Calculator, Loader2
 } from "lucide-react";
 
 import { cn, formatCurrency } from "@/lib/utils";
@@ -20,6 +20,7 @@ import {
   getLookupAssetQueryKey,
   useListParts, 
   useGenerateQuote,
+  useGetDataSource,
   type QuoteRequest,
   type PartItem
 } from "@workspace/api-client-react";
@@ -52,12 +53,15 @@ const quoteFormSchema = z.object({
 
 type QuoteFormValues = z.infer<typeof quoteFormSchema>;
 
-const SERVICE_TYPES = [
+/**
+ * Service labels that predate the data-driven service list. They have no
+ * catalog price, so selecting one sets the price to 0 for manual entry.
+ * Kept so existing users can still pick the wording they are used to.
+ */
+const LEGACY_SERVICE_TYPES = [
   "On-Site Support (1 day)",
-  "On-Site Support (2 days)",
   "PM Service",
   "Remote Support",
-  "Other"
 ];
 
 interface QuoteFormProps {
@@ -134,6 +138,22 @@ export function QuoteForm({ parsedData }: QuoteFormProps) {
   // Data Fetching
   const { data: serialsData, isLoading: isLoadingSerials } = useListSerials();
   const { data: partsData, isLoading: isLoadingParts } = useListParts();
+  const { data: dataSource } = useGetDataSource();
+
+  // Services come from the data source ("Service" category: on-site support,
+  // service contracts, ...) followed by the legacy labels not in the catalog.
+  const services = useMemo<PartItem[]>(() => {
+    const fromCatalog = (partsData?.parts ?? []).filter((p) => p.category === "Service");
+    const known = new Set(fromCatalog.map((p) => p.partName.trim().toLowerCase()));
+    const legacy = LEGACY_SERVICE_TYPES.filter((n) => !known.has(n.toLowerCase())).map((partName) => ({
+      partName,
+      partNumber: "",
+      listPrice: 0,
+      netPrice: 0,
+      category: "Service",
+    }));
+    return [...fromCatalog, ...legacy];
+  }, [partsData]);
 
   const initialValues = parsedData ? buildInitialValues(parsedData) : {};
   
@@ -187,32 +207,32 @@ export function QuoteForm({ parsedData }: QuoteFormProps) {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // Auto-fill service price when service type dropdown changes
-  const watchedServiceType = watch("serviceType");
-  useEffect(() => {
-    if (!watchedServiceType || !partsData?.parts) return;
-    const match = partsData.parts.find(
-      (p) => p.partName.trim().toLowerCase() === watchedServiceType.trim().toLowerCase()
-    );
-    if (match && match.listPrice > 0) {
-      setValue("servicePrice", match.listPrice, { shouldValidate: true });
-    }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [watchedServiceType]);
+  // Serial-not-found hint: shown once the typed value can no longer match any
+  // serial in the data source (so it does not flash while typing a prefix).
+  const serialQuery = (serialNumber ?? "").trim().toLowerCase();
+  const serialHasCandidates = useMemo(() => {
+    if (!serialsData?.serials || serialQuery.length < 3) return true;
+    return serialsData.serials.some((s) => s.toLowerCase().includes(serialQuery));
+  }, [serialsData, serialQuery]);
 
-  // Auto-fill additional fields from asset lookup (enriches with contract status, product name, etc.)
+  // Auto-fill fields from the asset lookup.
+  // Manual mode: every looked-up field is replaced, blanks included, so
+  // switching serials never leaves the previous asset's address/contract on
+  // the form. Upload mode: values from the spreadsheet are kept unless the
+  // lookup has something better (the workbook is the user's own input).
   useEffect(() => {
     if (assetData?.asset) {
       const asset = assetData.asset;
-      if (asset.accountName) setValue("accountName", asset.accountName, { shouldValidate: true });
-      if (asset.facilityName) setValue("facilityName", asset.facilityName);
-      
       const fullAddress = [asset.street, asset.city, asset.stateZip].filter(Boolean).join(", ");
-      if (fullAddress) setValue("address", fullAddress);
-      
-      if (asset.contractType) setValue("contractType", asset.contractType);
-      if (asset.contractStatus) setValue("contractStatus", asset.contractStatus);
-      if (asset.productName) setValue("productName", asset.productName);
+      const set = (field: "accountName" | "facilityName" | "address" | "contractType" | "contractStatus" | "productName", value: string) => {
+        if (value || !parsedData) setValue(field, value, { shouldValidate: field === "accountName" });
+      };
+      set("accountName", asset.accountName ?? "");
+      set("facilityName", asset.facilityName ?? "");
+      set("address", fullAddress);
+      set("contractType", asset.contractType ?? "");
+      set("contractStatus", asset.contractStatus ?? "");
+      set("productName", asset.productName ?? "");
       
       if (!parsedData) {
         toast({
@@ -275,10 +295,12 @@ export function QuoteForm({ parsedData }: QuoteFormProps) {
     generateMutation.mutate({ data: payload });
   };
 
-  // Calculations
+  // Calculations (on-screen summary; the PDF recomputes server-side).
+  // Inputs registered on number fields arrive as strings until submit, so
+  // coerce here or "subtotal + shipping" would concatenate and show NaN.
   const parts = watch("parts");
-  const servicePrice = watch("servicePrice") || 0;
-  const sh = watch("shippingAndHandling") || 0;
+  const servicePrice = Number(watch("servicePrice")) || 0;
+  const sh = Number(watch("shippingAndHandling")) || 0;
   
   const partsTotal = parts.reduce((acc, part) => {
     const qty = Number(part.quantity) || 0;
@@ -317,6 +339,12 @@ export function QuoteForm({ parsedData }: QuoteFormProps) {
             <h2 className="text-xl">Customer Information</h2>
             <p className="text-sm text-muted-foreground">
               {parsedData ? "Populated from Excel — edit any field below" : "Details populated automatically from serial lookup"}
+              {dataSource && (
+                <span className="text-muted-foreground/70">
+                  {" · "}
+                  {dataSource.name} data · {dataSource.assetCount.toLocaleString()} assets · updated {new Date(dataSource.importedAt).toLocaleDateString()}
+                </span>
+              )}
             </p>
           </div>
         </div>
@@ -347,6 +375,11 @@ export function QuoteForm({ parsedData }: QuoteFormProps) {
               icon={isFetchingAsset ? <Loader2 className="w-4 h-4 animate-spin text-primary" /> : <Search className="w-4 h-4 text-muted-foreground" />}
             />
             <ErrorMsg field="serialNumber" />
+            {!serialHasCandidates && (
+              <p className="text-xs mt-1 text-amber-700">
+                No asset with this serial in the {dataSource?.name ?? "current"} data. You can fill in the customer details manually.
+              </p>
+            )}
           </div>
 
           <div>
@@ -412,20 +445,20 @@ export function QuoteForm({ parsedData }: QuoteFormProps) {
         <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
           <div>
             <InputLabel>Service Type</InputLabel>
-            <div className="relative">
-              <select 
-                {...register("serviceType")}
-                className="w-full pl-4 pr-10 py-2.5 appearance-none rounded-xl border border-input bg-card text-sm transition-all focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary"
-              >
-                <option value="">Select a service...</option>
-                {SERVICE_TYPES.map(s => (
-                  <option key={s} value={s}>{s}</option>
-                ))}
-              </select>
-              <div className="absolute inset-y-0 right-0 flex items-center pr-3 pointer-events-none text-slate-400">
-                <ChevronDown className="w-4 h-4" />
-              </div>
-            </div>
+            <Autocomplete
+              items={services}
+              value={watch("serviceType") ?? ""}
+              onChange={(val) => setValue("serviceType", val, { shouldValidate: true })}
+              onSelect={(item: PartItem) => {
+                setValue("servicePrice", item.listPrice || 0, { shouldValidate: true });
+              }}
+              getDisplayValue={(item: PartItem) => item.partName}
+              getSearchValue={(item: PartItem) => `${item.partName} ${item.partNumber || ""}`}
+              getSecondaryValue={(item: PartItem) => item.partNumber || ""}
+              placeholder="Search services (e.g. On-Site Support)..."
+              disabled={isLoadingParts}
+              icon={<Settings2 className="w-4 h-4 text-muted-foreground" />}
+            />
           </div>
 
           <div>
@@ -501,6 +534,7 @@ export function QuoteForm({ parsedData }: QuoteFormProps) {
                       }}
                       getDisplayValue={(item: PartItem) => item.partName}
                       getSearchValue={(item: PartItem) => `${item.partName} ${item.partNumber || ""}`}
+                      getSecondaryValue={(item: PartItem) => item.partNumber || ""}
                       placeholder="Search parts catalog..."
                       disabled={isLoadingParts}
                       icon={<FileBox className="w-4 h-4 text-muted-foreground" />}

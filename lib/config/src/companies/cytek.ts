@@ -4,6 +4,7 @@ const TC_INTRO = `These general terms and conditions (along with the quotation, 
 
 export const cytekConfig: CompanyConfig = {
   id: "cytek",
+  dataSourceId: "cytek",
   legalName: "Cytek Biosciences Inc.",
   shortName: "Cytek",
   address: {
