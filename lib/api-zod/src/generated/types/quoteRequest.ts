@@ -16,6 +16,10 @@ export interface QuoteRequest {
   contractType?: string;
   serviceType?: string;
   servicePrice?: number;
+  /** Quote-specific discount on the service line, 0-100. */
+  serviceDiscountPercent?: number;
+  /** Instrument/product name printed with the serial number on the quote. */
+  productName?: string;
   parts: QuoteLineItem[];
   /** Shipping & handling charge added to the quote total. */
   shipping?: number;

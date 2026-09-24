@@ -39,10 +39,22 @@ export interface DataSourceSummary {
   id: string;
   name: string;
   isDefault: boolean;
+  /** Compiled into the application; cannot be deleted or replaced from the UI. */
+  builtIn: boolean;
   importedAt: string;
   sourceFiles: string[];
   assetCount: number;
   productCount: number;
+  unpricedProductCount: number;
+}
+
+export interface DataSourceListing {
+  dataSources: DataSourceSummary[];
+  defaultId: string;
+  /** false when uploaded data sources will not survive a server restart. */
+  persistent: boolean;
+  /** memory, file or postgres. */
+  storeKind: string;
 }
 
 export interface AssetLookupResult {
@@ -62,6 +74,8 @@ export interface PartItem {
   category?: string;
   /** Sale unit from the source (e.g. "Each", "Year"). */
   unit?: string;
+  /** false when the source has no usable list price for this item (listPrice is 0). */
+  priced?: boolean;
 }
 
 export interface PartsListResult {
@@ -72,7 +86,12 @@ export interface QuoteLineItem {
   description: string;
   partNumber?: string;
   quantity: number;
+  /** List price per unit before any discount. */
   unitPrice: number;
+  /** Quote-specific discount, 0-100. Blank/0 keeps the list price. */
+  discountPercent?: number;
+  /** Discounted (selling) price per unit. Defaults to unitPrice less discountPercent. */
+  netPrice?: number;
 }
 
 export interface QuoteRequest {
@@ -84,6 +103,10 @@ export interface QuoteRequest {
   contractType?: string;
   serviceType?: string;
   servicePrice?: number;
+  /** Quote-specific discount on the service line, 0-100. */
+  serviceDiscountPercent?: number;
+  /** Instrument/product name printed with the serial number on the quote. */
+  productName?: string;
   parts: QuoteLineItem[];
   /** Shipping & handling charge added to the quote total. */
   shipping?: number;
@@ -94,6 +117,42 @@ export interface ErrorResponse {
   error: string;
 }
 
+/**
+ * Data source id to query; defaults to the default data source.
+ */
+export type DataSourceParamParameter = string;
+
+export type CreateDataSourceBody = {
+  name: string;
+  file: Blob;
+};
+
+export type ReplaceDataSourceWorkbookBody = {
+  file: Blob;
+};
+
+export type SetDefaultDataSource200 = {
+  defaultId: string;
+};
+
 export type LookupAssetParams = {
   serial: string;
+  /**
+   * Data source id to query; defaults to the default data source.
+   */
+  dataSource?: DataSourceParamParameter;
+};
+
+export type ListSerialsParams = {
+  /**
+   * Data source id to query; defaults to the default data source.
+   */
+  dataSource?: DataSourceParamParameter;
+};
+
+export type ListPartsParams = {
+  /**
+   * Data source id to query; defaults to the default data source.
+   */
+  dataSource?: DataSourceParamParameter;
 };

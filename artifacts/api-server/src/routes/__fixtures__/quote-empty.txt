@@ -1,6 +1,7 @@
 pages: 4
 <DATE>
 Nobody
+Serial Number: X
 QUOTE#: <QUOTE#>
 ItemDescriptionProductQtyListNetExt. Price
 NumberPricePrice

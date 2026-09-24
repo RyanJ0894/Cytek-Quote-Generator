@@ -7,8 +7,7 @@
  */
 import type { DataSourceParamParameter } from "./dataSourceParamParameter";
 
-export type LookupAssetParams = {
-  serial: string;
+export type ListSerialsParams = {
   /**
    * Data source id to query; defaults to the default data source.
    */

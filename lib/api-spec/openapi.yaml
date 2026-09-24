@@ -31,6 +31,117 @@ paths:
               schema:
                 $ref: "#/components/schemas/DataSourceSummary"
 
+  /data-sources:
+    get:
+      operationId: listDataSources
+      tags: [data-sources]
+      summary: List all data sources (built-in and uploaded) and which is the default
+      responses:
+        "200":
+          description: Data source listing
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DataSourceListing"
+    post:
+      operationId: createDataSource
+      tags: [data-sources]
+      summary: Add a data source by uploading a Cytek-format workbook (one-time import)
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              properties:
+                name:
+                  type: string
+                file:
+                  type: string
+                  format: binary
+              required: [name, file]
+      responses:
+        "201":
+          description: Created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DataSourceSummary"
+        "400":
+          description: Invalid workbook or name
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /data-sources/{id}/replace:
+    post:
+      operationId: replaceDataSourceWorkbook
+      tags: [data-sources]
+      summary: Re-import an uploaded data source from a newer workbook
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              properties:
+                file:
+                  type: string
+                  format: binary
+              required: [file]
+      responses:
+        "200":
+          description: Replaced
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DataSourceSummary"
+
+  /data-sources/{id}/default:
+    post:
+      operationId: setDefaultDataSource
+      tags: [data-sources]
+      summary: Make a data source the default for Manual Mode
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Default updated
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  defaultId:
+                    type: string
+                required: [defaultId]
+
+  /data-sources/{id}:
+    delete:
+      operationId: deleteDataSource
+      tags: [data-sources]
+      summary: Delete an uploaded data source (built-in sources cannot be deleted)
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "204":
+          description: Deleted
+
   /healthz:
     get:
       operationId: healthCheck
@@ -55,6 +166,7 @@ paths:
           required: true
           schema:
             type: string
+        - $ref: "#/components/parameters/DataSourceParam"
       responses:
         "200":
           description: Asset found
@@ -74,6 +186,8 @@ paths:
       operationId: listSerials
       tags: [assets]
       summary: List all serial numbers for autocomplete
+      parameters:
+        - $ref: "#/components/parameters/DataSourceParam"
       responses:
         "200":
           description: List of serial numbers
@@ -86,7 +200,9 @@ paths:
     get:
       operationId: listParts
       tags: [parts]
-      summary: List all available parts from pricing data
+      summary: List all products (parts and services, priced or not) from a data source
+      parameters:
+        - $ref: "#/components/parameters/DataSourceParam"
       responses:
         "200":
           description: Parts list
@@ -116,6 +232,14 @@ paths:
                 format: binary
 
 components:
+  parameters:
+    DataSourceParam:
+      name: dataSource
+      in: query
+      required: false
+      description: Data source id to query; defaults to the default data source.
+      schema:
+        type: string
   schemas:
     HealthStatus:
       type: object
@@ -185,6 +309,9 @@ components:
           type: string
         isDefault:
           type: boolean
+        builtIn:
+          type: boolean
+          description: Compiled into the application; cannot be deleted or replaced from the UI.
         importedAt:
           type: string
         sourceFiles:
@@ -195,14 +322,39 @@ components:
           type: integer
         productCount:
           type: integer
+        unpricedProductCount:
+          type: integer
       required:
         - id
         - name
         - isDefault
+        - builtIn
         - importedAt
         - sourceFiles
         - assetCount
         - productCount
+        - unpricedProductCount
+
+    DataSourceListing:
+      type: object
+      properties:
+        dataSources:
+          type: array
+          items:
+            $ref: "#/components/schemas/DataSourceSummary"
+        defaultId:
+          type: string
+        persistent:
+          type: boolean
+          description: false when uploaded data sources will not survive a server restart.
+        storeKind:
+          type: string
+          description: memory, file or postgres.
+      required:
+        - dataSources
+        - defaultId
+        - persistent
+        - storeKind
 
     AssetLookupResult:
       type: object
@@ -239,6 +391,9 @@ components:
         unit:
           type: string
           description: Sale unit from the source (e.g. "Each", "Year").
+        priced:
+          type: boolean
+          description: false when the source has no usable list price for this item (listPrice is 0).
       required:
         - partName
         - listPrice
@@ -264,6 +419,13 @@ components:
           type: integer
         unitPrice:
           type: number
+          description: List price per unit before any discount.
+        discountPercent:
+          type: number
+          description: Quote-specific discount, 0-100. Blank/0 keeps the list price.
+        netPrice:
+          type: number
+          description: Discounted (selling) price per unit. Defaults to unitPrice less discountPercent.
       required:
         - description
         - quantity
@@ -288,6 +450,12 @@ components:
           type: string
         servicePrice:
           type: number
+        serviceDiscountPercent:
+          type: number
+          description: Quote-specific discount on the service line, 0-100.
+        productName:
+          type: string
+          description: Instrument/product name printed with the serial number on the quote.
         parts:
           type: array
           items:

@@ -11,8 +11,8 @@ Quote Magic started as a purpose-built internal tool for Cytek Biosciences and i
 - **Serial number lookup** — type a serial number and auto-fill account name, facility, address, contract type/status, and instrument name from the asset catalog.
 - **Parts catalog search** — searchable autocomplete over the pricing catalog with auto-filled part numbers and list prices.
 - **Excel import** — upload a filled-in "FSE Input" workbook and the form auto-populates from it (service quote, parts quote, or both).
-- **Service + parts quoting** — mix a primary service line with any number of parts line items, with live subtotal/shipping/total calculation.
-- **Branded PDF generation** — server-rendered PDF quote plus a multi-page terms & conditions document, styled from the active company configuration (logo, colors, footer, legal text).
+- **Service + parts quoting** — mix a primary service line with any number of parts line items, each with an optional quote-specific discount %, with live adjusted price, line total, subtotal, shipping and total calculation.
+- **Branded PDF generation** — server-rendered PDF quote (customer block with instrument and serial number, list/net/extended price columns) plus a multi-page terms & conditions document, styled from the active company configuration (logo, colors, footer, legal text).
 - **Company configuration system** — swap company name, address, contact info, logo, quote footer bullets, contract language, document titles, and PDF colors from one config file, with no code changes.
 
 ## Tech Stack
@@ -65,7 +65,8 @@ pnpm --filter @workspace/api-spec run codegen
 | `BASE_PATH` | frontend | Base path the frontend is served from (e.g. `/`). Required by the Vite config. |
 | `COMPANY_ID` | API server, frontend | Optional. Selects which `CompanyConfig` in `lib/config/src/companies/` is active. Defaults to `cytek`, the only company configured today. |
 | `NODE_ENV` | API server | Standard Node environment flag (`development` / `production`). |
-| `DATABASE_URL` | `lib/db` only | Postgres connection string. Only required if you run `pnpm --filter db run push`; the shipped application does not currently read from a database. Reserved for future persistence (see [Roadmap](#future-roadmap)). |
+| `DATABASE_URL` | API server | Optional. Postgres connection string used to persist uploaded Data Sources. Without it, uploads survive only until the server restarts. |
+| `DATA_SOURCES_DIR` | API server | Optional (local/dev). Directory for file-based Data Source storage when no database is configured. |
 
 ## Build Instructions
 
@@ -100,29 +101,20 @@ Vercel-specific limits to be aware of: request bodies are capped at 4.5 MB (the 
 
 ## Data Sources (asset and pricing data)
 
-Manual Mode looks up serial numbers and products against a **Data Source**: a company's asset catalog and product/pricing catalog, already normalized into the shape the app expects. Today there is one, **Cytek**, and it is the default; nothing has to be selected or uploaded to create a quote.
+Manual Mode looks up serial numbers and products against a **Data Source**: a company's asset catalog and product/pricing catalog, normalized into the shape the app expects. The default source is used automatically, so creating a quote never requires choosing or uploading anything.
 
-The Cytek data is imported **once** from the Cytek Quoting Tool workbook and committed as JSON:
+Two kinds exist:
 
-```text
-artifacts/api-server/src/data-sources/cytek/
-├── source/cytek-quoting-tool-rev6.xlsx   # primary: which assets exist, account, product, contract, pricing
-├── source/cytek-quoting-tool-rev5.xlsx   # supplement: facility code, address, contact (columns Rev6 no longer exports)
-├── importer.ts                           # Rev6/Rev5 -> normalized records (the only Cytek-specific parsing)
-├── import.ts                             # CLI that runs the importer and writes the files below
-├── assets.json / products.json           # normalized data bundled into the server
-└── manifest.json                         # what was imported, from which files, counts, rejections, field mappings
-```
+- **Built-in**: `Cytek`, compiled into the server from the workbooks under `artifacts/api-server/src/data-sources/cytek/source/` (Rev6 primary, Rev5 supplying the facility/address/contact columns Rev6 no longer exports). Regenerate with `pnpm --filter @workspace/api-server run import:cytek` and commit the JSON. It can never be deleted, so the app always has data.
+- **Uploaded**: from the **Data Sources** page (header link, or `/data-sources`). Upload a workbook with `Asset Data` and `Pricing Data` sheets in the Cytek Quoting Tool layout **once**; it is normalized and saved, and can be set as the default, updated from a newer file, or deleted. When more than one source exists the quote form shows a small selector, preselected to the default.
 
-To load a newer Cytek workbook: drop it in `source/` as `cytek-quoting-tool-rev6.xlsx` (or update the file name in `import.ts`), run
+Products the workbook has no usable list price for are imported and flagged (`priced: false`); they appear in search marked "no list price" and the form asks for a price when one is selected. Prices are never invented.
 
-```bash
-pnpm --filter @workspace/api-server run import:cytek
-```
+### Persistence (`DATABASE_URL`)
 
-review the printed summary (counts and rejected rows), run `pnpm --filter @workspace/api-server test`, and commit the regenerated JSON. The import reads the workbook's `Asset Data` and `Pricing Data` sheets by column header; it never depends on the workbook's own lookup formulas. See `DEVELOPMENT_NOTES.md` for the field mapping and the design behind it.
+Uploaded sources are stored in Postgres when `DATABASE_URL` is set (tables are created automatically on first use). Locally, `DATA_SOURCES_DIR=<folder>` stores them as JSON files instead. With neither, the app still runs on the built-in data but uploads are kept in memory only and the Data Sources page says so. On Vercel, add a Postgres database (Marketplace → Neon, or any Postgres) and set `DATABASE_URL` in the project's environment variables.
 
-`GET /api/data-source` reports which data source is active, when it was imported and how many records it holds; the quote form shows this in one line under "Customer Information".
+The API: `GET /api/data-sources`, `POST /api/data-sources` (multipart `name` + `file`), `POST /api/data-sources/{id}/replace`, `POST /api/data-sources/{id}/default`, `DELETE /api/data-sources/{id}`; lookups accept `?dataSource=<id>`.
 
 ## Folder Structure
 

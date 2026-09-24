@@ -18,13 +18,19 @@ import type {
 
 import type {
   AssetLookupResult,
+  CreateDataSourceBody,
+  DataSourceListing,
   DataSourceSummary,
   ErrorResponse,
   HealthStatus,
+  ListPartsParams,
+  ListSerialsParams,
   LookupAssetParams,
   PartsListResult,
   QuoteRequest,
+  ReplaceDataSourceWorkbookBody,
   SerialsListResult,
+  SetDefaultDataSource200,
 } from "./api.schemas";
 
 import { customFetch } from "../custom-fetch";
@@ -110,6 +116,428 @@ export function useGetDataSource<
 
   return { ...query, queryKey: queryOptions.queryKey };
 }
+
+/**
+ * @summary List all data sources (built-in and uploaded) and which is the default
+ */
+export const getListDataSourcesUrl = () => {
+  return `/api/data-sources`;
+};
+
+export const listDataSources = async (
+  options?: RequestInit,
+): Promise<DataSourceListing> => {
+  return customFetch<DataSourceListing>(getListDataSourcesUrl(), {
+    ...options,
+    method: "GET",
+  });
+};
+
+export const getListDataSourcesQueryKey = () => {
+  return [`/api/data-sources`] as const;
+};
+
+export const getListDataSourcesQueryOptions = <
+  TData = Awaited<ReturnType<typeof listDataSources>>,
+  TError = ErrorType<unknown>,
+>(options?: {
+  query?: UseQueryOptions<
+    Awaited<ReturnType<typeof listDataSources>>,
+    TError,
+    TData
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}) => {
+  const { query: queryOptions, request: requestOptions } = options ?? {};
+
+  const queryKey = queryOptions?.queryKey ?? getListDataSourcesQueryKey();
+
+  const queryFn: QueryFunction<Awaited<ReturnType<typeof listDataSources>>> = ({
+    signal,
+  }) => listDataSources({ signal, ...requestOptions });
+
+  return { queryKey, queryFn, ...queryOptions } as UseQueryOptions<
+    Awaited<ReturnType<typeof listDataSources>>,
+    TError,
+    TData
+  > & { queryKey: QueryKey };
+};
+
+export type ListDataSourcesQueryResult = NonNullable<
+  Awaited<ReturnType<typeof listDataSources>>
+>;
+export type ListDataSourcesQueryError = ErrorType<unknown>;
+
+/**
+ * @summary List all data sources (built-in and uploaded) and which is the default
+ */
+
+export function useListDataSources<
+  TData = Awaited<ReturnType<typeof listDataSources>>,
+  TError = ErrorType<unknown>,
+>(options?: {
+  query?: UseQueryOptions<
+    Awaited<ReturnType<typeof listDataSources>>,
+    TError,
+    TData
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+  const queryOptions = getListDataSourcesQueryOptions(options);
+
+  const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & {
+    queryKey: QueryKey;
+  };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+/**
+ * @summary Add a data source by uploading a Cytek-format workbook (one-time import)
+ */
+export const getCreateDataSourceUrl = () => {
+  return `/api/data-sources`;
+};
+
+export const createDataSource = async (
+  createDataSourceBody: CreateDataSourceBody,
+  options?: RequestInit,
+): Promise<DataSourceSummary> => {
+  const formData = new FormData();
+  formData.append(`name`, createDataSourceBody.name);
+  formData.append(`file`, createDataSourceBody.file);
+
+  return customFetch<DataSourceSummary>(getCreateDataSourceUrl(), {
+    ...options,
+    method: "POST",
+    body: formData,
+  });
+};
+
+export const getCreateDataSourceMutationOptions = <
+  TError = ErrorType<ErrorResponse>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof createDataSource>>,
+    TError,
+    { data: BodyType<CreateDataSourceBody> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationOptions<
+  Awaited<ReturnType<typeof createDataSource>>,
+  TError,
+  { data: BodyType<CreateDataSourceBody> },
+  TContext
+> => {
+  const mutationKey = ["createDataSource"];
+  const { mutation: mutationOptions, request: requestOptions } = options
+    ? options.mutation &&
+      "mutationKey" in options.mutation &&
+      options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey }, request: undefined };
+
+  const mutationFn: MutationFunction<
+    Awaited<ReturnType<typeof createDataSource>>,
+    { data: BodyType<CreateDataSourceBody> }
+  > = (props) => {
+    const { data } = props ?? {};
+
+    return createDataSource(data, requestOptions);
+  };
+
+  return { mutationFn, ...mutationOptions };
+};
+
+export type CreateDataSourceMutationResult = NonNullable<
+  Awaited<ReturnType<typeof createDataSource>>
+>;
+export type CreateDataSourceMutationBody = BodyType<CreateDataSourceBody>;
+export type CreateDataSourceMutationError = ErrorType<ErrorResponse>;
+
+/**
+ * @summary Add a data source by uploading a Cytek-format workbook (one-time import)
+ */
+export const useCreateDataSource = <
+  TError = ErrorType<ErrorResponse>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof createDataSource>>,
+    TError,
+    { data: BodyType<CreateDataSourceBody> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationResult<
+  Awaited<ReturnType<typeof createDataSource>>,
+  TError,
+  { data: BodyType<CreateDataSourceBody> },
+  TContext
+> => {
+  return useMutation(getCreateDataSourceMutationOptions(options));
+};
+
+/**
+ * @summary Re-import an uploaded data source from a newer workbook
+ */
+export const getReplaceDataSourceWorkbookUrl = (id: string) => {
+  return `/api/data-sources/${id}/replace`;
+};
+
+export const replaceDataSourceWorkbook = async (
+  id: string,
+  replaceDataSourceWorkbookBody: ReplaceDataSourceWorkbookBody,
+  options?: RequestInit,
+): Promise<DataSourceSummary> => {
+  const formData = new FormData();
+  formData.append(`file`, replaceDataSourceWorkbookBody.file);
+
+  return customFetch<DataSourceSummary>(getReplaceDataSourceWorkbookUrl(id), {
+    ...options,
+    method: "POST",
+    body: formData,
+  });
+};
+
+export const getReplaceDataSourceWorkbookMutationOptions = <
+  TError = ErrorType<unknown>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof replaceDataSourceWorkbook>>,
+    TError,
+    { id: string; data: BodyType<ReplaceDataSourceWorkbookBody> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationOptions<
+  Awaited<ReturnType<typeof replaceDataSourceWorkbook>>,
+  TError,
+  { id: string; data: BodyType<ReplaceDataSourceWorkbookBody> },
+  TContext
+> => {
+  const mutationKey = ["replaceDataSourceWorkbook"];
+  const { mutation: mutationOptions, request: requestOptions } = options
+    ? options.mutation &&
+      "mutationKey" in options.mutation &&
+      options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey }, request: undefined };
+
+  const mutationFn: MutationFunction<
+    Awaited<ReturnType<typeof replaceDataSourceWorkbook>>,
+    { id: string; data: BodyType<ReplaceDataSourceWorkbookBody> }
+  > = (props) => {
+    const { id, data } = props ?? {};
+
+    return replaceDataSourceWorkbook(id, data, requestOptions);
+  };
+
+  return { mutationFn, ...mutationOptions };
+};
+
+export type ReplaceDataSourceWorkbookMutationResult = NonNullable<
+  Awaited<ReturnType<typeof replaceDataSourceWorkbook>>
+>;
+export type ReplaceDataSourceWorkbookMutationBody =
+  BodyType<ReplaceDataSourceWorkbookBody>;
+export type ReplaceDataSourceWorkbookMutationError = ErrorType<unknown>;
+
+/**
+ * @summary Re-import an uploaded data source from a newer workbook
+ */
+export const useReplaceDataSourceWorkbook = <
+  TError = ErrorType<unknown>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof replaceDataSourceWorkbook>>,
+    TError,
+    { id: string; data: BodyType<ReplaceDataSourceWorkbookBody> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationResult<
+  Awaited<ReturnType<typeof replaceDataSourceWorkbook>>,
+  TError,
+  { id: string; data: BodyType<ReplaceDataSourceWorkbookBody> },
+  TContext
+> => {
+  return useMutation(getReplaceDataSourceWorkbookMutationOptions(options));
+};
+
+/**
+ * @summary Make a data source the default for Manual Mode
+ */
+export const getSetDefaultDataSourceUrl = (id: string) => {
+  return `/api/data-sources/${id}/default`;
+};
+
+export const setDefaultDataSource = async (
+  id: string,
+  options?: RequestInit,
+): Promise<SetDefaultDataSource200> => {
+  return customFetch<SetDefaultDataSource200>(getSetDefaultDataSourceUrl(id), {
+    ...options,
+    method: "POST",
+  });
+};
+
+export const getSetDefaultDataSourceMutationOptions = <
+  TError = ErrorType<unknown>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof setDefaultDataSource>>,
+    TError,
+    { id: string },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationOptions<
+  Awaited<ReturnType<typeof setDefaultDataSource>>,
+  TError,
+  { id: string },
+  TContext
+> => {
+  const mutationKey = ["setDefaultDataSource"];
+  const { mutation: mutationOptions, request: requestOptions } = options
+    ? options.mutation &&
+      "mutationKey" in options.mutation &&
+      options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey }, request: undefined };
+
+  const mutationFn: MutationFunction<
+    Awaited<ReturnType<typeof setDefaultDataSource>>,
+    { id: string }
+  > = (props) => {
+    const { id } = props ?? {};
+
+    return setDefaultDataSource(id, requestOptions);
+  };
+
+  return { mutationFn, ...mutationOptions };
+};
+
+export type SetDefaultDataSourceMutationResult = NonNullable<
+  Awaited<ReturnType<typeof setDefaultDataSource>>
+>;
+
+export type SetDefaultDataSourceMutationError = ErrorType<unknown>;
+
+/**
+ * @summary Make a data source the default for Manual Mode
+ */
+export const useSetDefaultDataSource = <
+  TError = ErrorType<unknown>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof setDefaultDataSource>>,
+    TError,
+    { id: string },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationResult<
+  Awaited<ReturnType<typeof setDefaultDataSource>>,
+  TError,
+  { id: string },
+  TContext
+> => {
+  return useMutation(getSetDefaultDataSourceMutationOptions(options));
+};
+
+/**
+ * @summary Delete an uploaded data source (built-in sources cannot be deleted)
+ */
+export const getDeleteDataSourceUrl = (id: string) => {
+  return `/api/data-sources/${id}`;
+};
+
+export const deleteDataSource = async (
+  id: string,
+  options?: RequestInit,
+): Promise<void> => {
+  return customFetch<void>(getDeleteDataSourceUrl(id), {
+    ...options,
+    method: "DELETE",
+  });
+};
+
+export const getDeleteDataSourceMutationOptions = <
+  TError = ErrorType<unknown>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof deleteDataSource>>,
+    TError,
+    { id: string },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationOptions<
+  Awaited<ReturnType<typeof deleteDataSource>>,
+  TError,
+  { id: string },
+  TContext
+> => {
+  const mutationKey = ["deleteDataSource"];
+  const { mutation: mutationOptions, request: requestOptions } = options
+    ? options.mutation &&
+      "mutationKey" in options.mutation &&
+      options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey }, request: undefined };
+
+  const mutationFn: MutationFunction<
+    Awaited<ReturnType<typeof deleteDataSource>>,
+    { id: string }
+  > = (props) => {
+    const { id } = props ?? {};
+
+    return deleteDataSource(id, requestOptions);
+  };
+
+  return { mutationFn, ...mutationOptions };
+};
+
+export type DeleteDataSourceMutationResult = NonNullable<
+  Awaited<ReturnType<typeof deleteDataSource>>
+>;
+
+export type DeleteDataSourceMutationError = ErrorType<unknown>;
+
+/**
+ * @summary Delete an uploaded data source (built-in sources cannot be deleted)
+ */
+export const useDeleteDataSource = <
+  TError = ErrorType<unknown>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof deleteDataSource>>,
+    TError,
+    { id: string },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationResult<
+  Awaited<ReturnType<typeof deleteDataSource>>,
+  TError,
+  { id: string },
+  TContext
+> => {
+  return useMutation(getDeleteDataSourceMutationOptions(options));
+};
 
 /**
  * @summary Health check
@@ -283,41 +711,57 @@ export function useLookupAsset<
 /**
  * @summary List all serial numbers for autocomplete
  */
-export const getListSerialsUrl = () => {
-  return `/api/assets/serials`;
+export const getListSerialsUrl = (params?: ListSerialsParams) => {
+  const normalizedParams = new URLSearchParams();
+
+  Object.entries(params || {}).forEach(([key, value]) => {
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? "null" : value.toString());
+    }
+  });
+
+  const stringifiedParams = normalizedParams.toString();
+
+  return stringifiedParams.length > 0
+    ? `/api/assets/serials?${stringifiedParams}`
+    : `/api/assets/serials`;
 };
 
 export const listSerials = async (
+  params?: ListSerialsParams,
   options?: RequestInit,
 ): Promise<SerialsListResult> => {
-  return customFetch<SerialsListResult>(getListSerialsUrl(), {
+  return customFetch<SerialsListResult>(getListSerialsUrl(params), {
     ...options,
     method: "GET",
   });
 };
 
-export const getListSerialsQueryKey = () => {
-  return [`/api/assets/serials`] as const;
+export const getListSerialsQueryKey = (params?: ListSerialsParams) => {
+  return [`/api/assets/serials`, ...(params ? [params] : [])] as const;
 };
 
 export const getListSerialsQueryOptions = <
   TData = Awaited<ReturnType<typeof listSerials>>,
   TError = ErrorType<unknown>,
->(options?: {
-  query?: UseQueryOptions<
-    Awaited<ReturnType<typeof listSerials>>,
-    TError,
-    TData
-  >;
-  request?: SecondParameter<typeof customFetch>;
-}) => {
+>(
+  params?: ListSerialsParams,
+  options?: {
+    query?: UseQueryOptions<
+      Awaited<ReturnType<typeof listSerials>>,
+      TError,
+      TData
+    >;
+    request?: SecondParameter<typeof customFetch>;
+  },
+) => {
   const { query: queryOptions, request: requestOptions } = options ?? {};
 
-  const queryKey = queryOptions?.queryKey ?? getListSerialsQueryKey();
+  const queryKey = queryOptions?.queryKey ?? getListSerialsQueryKey(params);
 
   const queryFn: QueryFunction<Awaited<ReturnType<typeof listSerials>>> = ({
     signal,
-  }) => listSerials({ signal, ...requestOptions });
+  }) => listSerials(params, { signal, ...requestOptions });
 
   return { queryKey, queryFn, ...queryOptions } as UseQueryOptions<
     Awaited<ReturnType<typeof listSerials>>,
@@ -338,15 +782,18 @@ export type ListSerialsQueryError = ErrorType<unknown>;
 export function useListSerials<
   TData = Awaited<ReturnType<typeof listSerials>>,
   TError = ErrorType<unknown>,
->(options?: {
-  query?: UseQueryOptions<
-    Awaited<ReturnType<typeof listSerials>>,
-    TError,
-    TData
-  >;
-  request?: SecondParameter<typeof customFetch>;
-}): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
-  const queryOptions = getListSerialsQueryOptions(options);
+>(
+  params?: ListSerialsParams,
+  options?: {
+    query?: UseQueryOptions<
+      Awaited<ReturnType<typeof listSerials>>,
+      TError,
+      TData
+    >;
+    request?: SecondParameter<typeof customFetch>;
+  },
+): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+  const queryOptions = getListSerialsQueryOptions(params, options);
 
   const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & {
     queryKey: QueryKey;
@@ -356,39 +803,59 @@ export function useListSerials<
 }
 
 /**
- * @summary List all available parts from pricing data
+ * @summary List all products (parts and services, priced or not) from a data source
  */
-export const getListPartsUrl = () => {
-  return `/api/parts`;
+export const getListPartsUrl = (params?: ListPartsParams) => {
+  const normalizedParams = new URLSearchParams();
+
+  Object.entries(params || {}).forEach(([key, value]) => {
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? "null" : value.toString());
+    }
+  });
+
+  const stringifiedParams = normalizedParams.toString();
+
+  return stringifiedParams.length > 0
+    ? `/api/parts?${stringifiedParams}`
+    : `/api/parts`;
 };
 
 export const listParts = async (
+  params?: ListPartsParams,
   options?: RequestInit,
 ): Promise<PartsListResult> => {
-  return customFetch<PartsListResult>(getListPartsUrl(), {
+  return customFetch<PartsListResult>(getListPartsUrl(params), {
     ...options,
     method: "GET",
   });
 };
 
-export const getListPartsQueryKey = () => {
-  return [`/api/parts`] as const;
+export const getListPartsQueryKey = (params?: ListPartsParams) => {
+  return [`/api/parts`, ...(params ? [params] : [])] as const;
 };
 
 export const getListPartsQueryOptions = <
   TData = Awaited<ReturnType<typeof listParts>>,
   TError = ErrorType<unknown>,
->(options?: {
-  query?: UseQueryOptions<Awaited<ReturnType<typeof listParts>>, TError, TData>;
-  request?: SecondParameter<typeof customFetch>;
-}) => {
+>(
+  params?: ListPartsParams,
+  options?: {
+    query?: UseQueryOptions<
+      Awaited<ReturnType<typeof listParts>>,
+      TError,
+      TData
+    >;
+    request?: SecondParameter<typeof customFetch>;
+  },
+) => {
   const { query: queryOptions, request: requestOptions } = options ?? {};
 
-  const queryKey = queryOptions?.queryKey ?? getListPartsQueryKey();
+  const queryKey = queryOptions?.queryKey ?? getListPartsQueryKey(params);
 
   const queryFn: QueryFunction<Awaited<ReturnType<typeof listParts>>> = ({
     signal,
-  }) => listParts({ signal, ...requestOptions });
+  }) => listParts(params, { signal, ...requestOptions });
 
   return { queryKey, queryFn, ...queryOptions } as UseQueryOptions<
     Awaited<ReturnType<typeof listParts>>,
@@ -403,17 +870,24 @@ export type ListPartsQueryResult = NonNullable<
 export type ListPartsQueryError = ErrorType<unknown>;
 
 /**
- * @summary List all available parts from pricing data
+ * @summary List all products (parts and services, priced or not) from a data source
  */
 
 export function useListParts<
   TData = Awaited<ReturnType<typeof listParts>>,
   TError = ErrorType<unknown>,
->(options?: {
-  query?: UseQueryOptions<Awaited<ReturnType<typeof listParts>>, TError, TData>;
-  request?: SecondParameter<typeof customFetch>;
-}): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
-  const queryOptions = getListPartsQueryOptions(options);
+>(
+  params?: ListPartsParams,
+  options?: {
+    query?: UseQueryOptions<
+      Awaited<ReturnType<typeof listParts>>,
+      TError,
+      TData
+    >;
+    request?: SecondParameter<typeof customFetch>;
+  },
+): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+  const queryOptions = getListPartsQueryOptions(params, options);
 
   const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & {
     queryKey: QueryKey;

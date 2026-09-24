@@ -1,19 +1,23 @@
 /**
- * One-time import CLI for the Cytek data source.
+ * One-time import CLI for the built-in Cytek data source.
  *
  *   pnpm --filter @workspace/api-server run import:cytek
  *
- * Reads the source workbook(s) in ./source, runs the Cytek importer and
+ * Reads the source workbook(s) in ./source, runs the workbook importer and
  * writes the normalized assets.json / products.json / manifest.json next to
- * this file. Those generated files are what the server bundles and serves;
- * re-run this (and commit the result) whenever Cytek provides a new workbook.
+ * this file. Those generated files are compiled into the server; re-run this
+ * (and commit the result) to update the built-in data. Users can also upload
+ * a newer workbook as a new data source from the app's Data Sources page.
  */
 import { createHash } from "node:crypto";
 import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import xlsx from "xlsx";
-import { importCytek } from "./importer.js";
+import { importWorkbook } from "../workbook-importer.js";
+
+export const CYTEK_DATA_SOURCE_ID = "cytek";
+export const CYTEK_DATA_SOURCE_NAME = "Cytek";
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const SOURCE_DIR = path.join(here, "source");
@@ -26,7 +30,7 @@ function loadWorkbook(fileName: string, label: string) {
   if (!existsSync(full)) throw new Error(`Source workbook not found: ${full}`);
   const buf = readFileSync(full);
   return {
-    workbook: xlsx.read(buf, { type: "buffer", cellDates: false }),
+    workbook: xlsx.read(buf, { type: "buffer" }),
     file: { fileName, label, sha256: createHash("sha256").update(buf).digest("hex") },
   };
 }
@@ -36,7 +40,7 @@ const supplement = existsSync(path.join(SOURCE_DIR, SUPPLEMENT.fileName))
   ? loadWorkbook(SUPPLEMENT.fileName, SUPPLEMENT.label)
   : undefined;
 
-const result = importCytek({ primary, supplement });
+const result = importWorkbook({ id: CYTEK_DATA_SOURCE_ID, name: CYTEK_DATA_SOURCE_NAME, primary, supplement });
 
 // Empty-string fields are omitted on disk (createStaticDataSource restores
 // them), which keeps the generated files and the server bundle small.
@@ -50,6 +54,6 @@ const m = result.manifest;
 console.log(`Imported data source "${m.name}" (${m.id}) at ${m.importedAt}`);
 for (const s of m.sources) console.log(`  ${s.role.padEnd(10)} ${s.label}  sha256=${s.sha256.slice(0, 12)}…  sheets: ${s.sheetsUsed.join(", ")}`);
 console.log(`  assets: ${m.counts.assets} (enriched from supplement: ${m.counts.assetsEnrichedFromSupplement}, of which account name changed: ${m.counts.assetsEnrichedWithDifferentAccountName}; facility defaulted to account: ${m.counts.assetsFacilityDefaultedToAccount})`);
-console.log(`  products: ${m.counts.products} (services: ${m.counts.services})`);
+console.log(`  products: ${m.counts.products} (priced: ${m.counts.pricedProducts}, unpriced: ${m.counts.unpricedProducts}, services: ${m.counts.services})`);
 console.log("  rejected:");
 for (const [reason, r] of Object.entries(m.rejected)) console.log(`    ${r.count.toString().padStart(6)}  ${reason}  e.g. ${r.samples.slice(0, 3).join(", ")}`);

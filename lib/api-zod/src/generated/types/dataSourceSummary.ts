@@ -10,8 +10,11 @@ export interface DataSourceSummary {
   id: string;
   name: string;
   isDefault: boolean;
+  /** Compiled into the application; cannot be deleted or replaced from the UI. */
+  builtIn: boolean;
   importedAt: string;
   sourceFiles: string[];
   assetCount: number;
   productCount: number;
+  unpricedProductCount: number;
 }

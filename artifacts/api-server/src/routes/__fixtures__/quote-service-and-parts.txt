@@ -4,6 +4,7 @@ Alyssa Sanfillipo
 RGON
 Ragon Institute of MGH MIT and Harvard - 600 Main
 St, Cambridge, Massachusetts 02139
+Serial Number: U1399
 QUOTE#: <QUOTE#>
 ItemDescriptionProductQtyListNetExt. Price
 NumberPricePrice

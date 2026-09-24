@@ -8,19 +8,6 @@
 import * as zod from "zod";
 
 /**
- * @summary Describe the default data source (name, import date, record counts)
- */
-export const GetDataSourceResponse = zod.object({
-  id: zod.string(),
-  name: zod.string(),
-  isDefault: zod.boolean(),
-  importedAt: zod.string(),
-  sourceFiles: zod.array(zod.string()),
-  assetCount: zod.number(),
-  productCount: zod.number(),
-});
-
-/**
  * @summary Health check
  */
 export const HealthCheckResponse = zod.object({
@@ -32,6 +19,10 @@ export const HealthCheckResponse = zod.object({
  */
 export const LookupAssetQueryParams = zod.object({
   serial: zod.coerce.string(),
+  dataSource: zod.coerce
+    .string()
+    .optional()
+    .describe("Data source id to query; defaults to the default data source."),
 });
 
 export const LookupAssetResponse = zod.object({
@@ -71,13 +62,27 @@ export const LookupAssetResponse = zod.object({
 /**
  * @summary List all serial numbers for autocomplete
  */
+export const ListSerialsQueryParams = zod.object({
+  dataSource: zod.coerce
+    .string()
+    .optional()
+    .describe("Data source id to query; defaults to the default data source."),
+});
+
 export const ListSerialsResponse = zod.object({
   serials: zod.array(zod.string()),
 });
 
 /**
- * @summary List all available parts from pricing data
+ * @summary List all products (parts and services, priced or not) from a data source
  */
+export const ListPartsQueryParams = zod.object({
+  dataSource: zod.coerce
+    .string()
+    .optional()
+    .describe("Data source id to query; defaults to the default data source."),
+});
+
 export const ListPartsResponse = zod.object({
   parts: zod.array(
     zod.object({
@@ -90,6 +95,12 @@ export const ListPartsResponse = zod.object({
         .string()
         .optional()
         .describe('Sale unit from the source (e.g. \"Each\", \"Year\").'),
+      priced: zod
+        .boolean()
+        .optional()
+        .describe(
+          "false when the source has no usable list price for this item (listPrice is 0).",
+        ),
     }),
   ),
 });
@@ -106,12 +117,36 @@ export const GenerateQuoteBody = zod.object({
   contractType: zod.string().optional(),
   serviceType: zod.string().optional(),
   servicePrice: zod.number().optional(),
+  serviceDiscountPercent: zod
+    .number()
+    .optional()
+    .describe("Quote-specific discount on the service line, 0-100."),
+  productName: zod
+    .string()
+    .optional()
+    .describe(
+      "Instrument\/product name printed with the serial number on the quote.",
+    ),
   parts: zod.array(
     zod.object({
       description: zod.string(),
       partNumber: zod.string().optional(),
       quantity: zod.number(),
-      unitPrice: zod.number(),
+      unitPrice: zod
+        .number()
+        .describe("List price per unit before any discount."),
+      discountPercent: zod
+        .number()
+        .optional()
+        .describe(
+          "Quote-specific discount, 0-100. Blank\/0 keeps the list price.",
+        ),
+      netPrice: zod
+        .number()
+        .optional()
+        .describe(
+          "Discounted (selling) price per unit. Defaults to unitPrice less discountPercent.",
+        ),
     }),
   ),
   shipping: zod

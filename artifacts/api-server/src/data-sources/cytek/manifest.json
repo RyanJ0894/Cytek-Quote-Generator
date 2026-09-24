@@ -1,7 +1,7 @@
 {
   "id": "cytek",
   "name": "Cytek",
-  "importedAt": "2026-09-19T23:22:40.452Z",
+  "importedAt": "2026-09-24T18:02:48.578Z",
   "sources": [
     {
       "role": "primary",
@@ -25,8 +25,10 @@
   ],
   "counts": {
     "assets": 9635,
-    "products": 5178,
-    "services": 163,
+    "products": 5419,
+    "pricedProducts": 5180,
+    "unpricedProducts": 239,
+    "services": 164,
     "assetsEnrichedFromSupplement": 2542,
     "assetsEnrichedWithDifferentAccountName": 263,
     "assetsFacilityDefaultedToAccount": 7093
@@ -47,73 +49,69 @@
         "8470060152"
       ]
     },
-    "product: no unit price": {
-      "count": 242,
+    "product: negative price (discount/adjustment item, not quotable)": {
+      "count": 10,
       "samples": [
-        "Basic contract deductible",
-        "Flat Top Viewing Tool",
-        "MMC 9616K11",
-        "355nm Aurora Field Upgrade Kit - Wuxi",
-        "Aurora 51 Channel with Fluidics Bucket- Wuxi",
-        "Northern Lights 41 Channel with Fluidics Bucket- Wuxi",
-        "Optics Module Assy",
-        "5 Laser Cable Assy Complete",
-        "5 Laser Cable Assy Complete",
-        "Aurora Platform 4 Laser"
-      ]
-    },
-    "product: blank display name": {
-      "count": 15,
-      "samples": [
-        "(blank row)",
-        "Pre-amp Board Test Station",
+        "VRMA Offset",
         "Shipping Allowance Discount (25%)",
-        "Tariff Surcharge - Instrument",
-        "Tariff Surcharge - Service",
-        "Travel",
+        "Trade-In Discount",
+        "Trade-In Discount",
         "Warranty Discount",
         "Warranty Discount INACTIVE",
+        "Website Discount (10%) INACTIVE",
+        "Website Discount (10%)-INA",
+        "Website Discount (5%)",
+        "Website Discount (5%) INACTIVE"
+      ]
+    },
+    "product: pricing adjustment item (discount/surcharge), not quotable": {
+      "count": 5,
+      "samples": [
+        "Tariff Surcharge - Instrument",
+        "Tariff Surcharge - Service",
         "Website Discount",
-        "Website Discount (10%)"
+        "Website Discount (10%)",
+        "Website Discount INACTIVE"
       ]
     }
   },
   "fieldMappings": {
     "assets": {
       "serialNumber": "primary Asset Data!Serial Number",
-      "assetName": "= serialNumber",
       "accountName": "primary Asset Data!Account Name",
-      "productName": "primary Asset Data!Product: Product Name",
-      "contractNumber": "primary Asset Data!Synced Contract: Contract Number",
-      "contractType": "primary Asset Data!Synced Contract: Contract Type",
-      "contractEndDate": "primary Asset Data!Synced Contract: Contract End Date (ISO date)",
-      "contractStatus": "derived at lookup: Activated if contractEndDate >= today, Expired if past, blank if none",
+      "contractNumber": "primary Asset Data!Synced Contract: Contract Number; else supplement Asset Data!Synced Contract: Contract Number",
+      "contractType": "primary Asset Data!Synced Contract: Contract Type; else supplement Asset Data!Synced Contract: Contract Type",
+      "contractEndDate": "primary Asset Data!Synced Contract: Contract End Date",
+      "productName": "primary Asset Data!Product: Product Name; else supplement Asset Data!Product: Product Name",
       "country": "primary Asset Data!Country",
       "assetStatus": "primary Asset Data!Status",
-      "installDate": "primary Asset Data!Install Date (ISO date)",
+      "installDate": "primary Asset Data!Install Date",
       "facilityName": "supplement Asset Data!shortened facility name; falls back to accountName",
+      "serviceTerritory": "supplement Asset Data!Service Territory: Name",
+      "contactName": "supplement Asset Data!Contact: Full Name",
+      "contactEmail": "supplement Asset Data!Contact: Email",
       "street": "supplement Asset Data!Street",
       "city": "supplement Asset Data!City",
       "stateZip": "supplement Asset Data!State and Zip code",
       "region": "supplement Asset Data!Region",
-      "serviceTerritory": "supplement Asset Data!Service Territory: Name",
-      "primaryTechnician": "supplement Asset Data!Primary Service Technician (else Primary FAS)",
-      "contactName": "supplement Asset Data!Contact: Full Name",
-      "contactEmail": "supplement Asset Data!Contact: Email"
+      "primaryTechnician": "supplement Asset Data!Primary Service Technician",
+      "assetName": "= serialNumber",
+      "contractStatus": "derived at lookup: Activated if contractEndDate >= today, Expired if past, blank if none"
     },
     "products": {
-      "partName": "primary Pricing Data!Display Name",
-      "partNumber": "primary Pricing Data!Part Number",
-      "listPrice": "primary Pricing Data!Unit Price",
-      "netPrice": "= listPrice (the workbook has no customer net price; 'Last Purchase Price' is internal cost and is not imported)",
+      "partName": "primary Pricing Data!Display Name; falls back to partNumber when blank",
       "unit": "primary Pricing Data!Sale Unit",
-      "category": "Service if Sale Unit is Year/2 Years/3 Years/Hour or Item Internal ID is blank; otherwise Parts"
+      "listPrice": "primary Pricing Data!Unit Price (rounded to cents; 0 with priced=false when blank/zero)",
+      "partNumber": "primary Pricing Data!Part Number",
+      "itemInternalId": "primary Pricing Data!Item Internal ID",
+      "netPrice": "= listPrice (the workbook has no customer net price; 'Last Purchase Price' is internal cost and is not imported)",
+      "category": "Service if Sale Unit is Year/2 Years/3 Years/Hour, or the row is priced but has no Item Internal ID; otherwise Parts"
     }
   },
   "notes": [
-    "Underlying data sheets are read directly; the workbook's FSE Input VLOOKUP formulas (#REF! in Rev6) are not used.",
-    "Rev6's Asset Data export has no facility code, address, contact or territory columns; those are carried over from the Rev5 supplement for serials present in Rev6.",
-    "Assets present only in the supplement are not imported: the primary workbook defines which assets exist.",
-    "Where the account name changed between Rev5 and Rev6, the carried-over address/contact may be out of date; all populated fields remain editable in the form."
+    "Underlying data sheets are read directly; the workbook's FSE Input VLOOKUP formulas are not used.",
+    "Products without a usable list price are imported with priced=false so they remain searchable; the form asks for a price when one is selected.",
+    "Fields blank in the primary workbook were filled from the supplement for serials present in the primary; serials only in the supplement were not imported.",
+    "Where the account name differs between primary and supplement, carried-over address/contact may be out of date; all populated fields remain editable in the form."
   ]
 }

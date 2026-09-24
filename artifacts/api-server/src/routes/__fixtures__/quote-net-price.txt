@@ -4,12 +4,13 @@ Alyssa Sanfillipo
 RGON
 Ragon Institute of MGH MIT and Harvard - 600 Main
 St, Cambridge, Massachusetts 02139
+Serial Number: U1399
 QUOTE#: <QUOTE#>
 ItemDescriptionProductQtyListNetExt. Price
 NumberPricePrice
-1Flow Cell BodyN0-000112$268.71$214.97$537.42
+1Flow Cell BodyN0-000112$268.71$214.97$429.94
 Shipping & Handling Estimate
-Total$537.42
+Total$429.94
 -All prices in USD
 -The above quotation does not include any applicable sales tax.
 -Cytek will confirm order receipt and estimated ship date.

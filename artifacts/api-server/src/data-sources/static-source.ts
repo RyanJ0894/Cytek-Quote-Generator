@@ -31,7 +31,7 @@ const ASSET_DEFAULTS: NormalizedAsset = {
 };
 
 const PRODUCT_DEFAULTS: NormalizedProduct = {
-  partName: "", partNumber: "", listPrice: 0, netPrice: 0, category: "Parts", unit: "",
+  partName: "", partNumber: "", listPrice: 0, netPrice: 0, category: "Parts", unit: "", priced: true,
 };
 
 /**

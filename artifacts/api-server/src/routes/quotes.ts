@@ -33,7 +33,11 @@ interface QuoteLineItem {
   description: string;
   partNumber?: string;
   quantity: number;
+  /** List price per unit. */
   unitPrice: number;
+  /** Quote-specific discount, 0-100. */
+  discountPercent?: number;
+  /** Discounted price per unit; computed from discountPercent when absent. */
   netPrice?: number;
 }
 
@@ -48,6 +52,7 @@ interface QuoteRequest {
   productName?: string;
   serviceType?: string;
   servicePrice?: number;
+  serviceDiscountPercent?: number;
   parts: QuoteLineItem[];
   shipping?: number;
   notes?: string;
@@ -55,6 +60,22 @@ interface QuoteRequest {
 
 function isQuoteRequest(body: unknown): body is QuoteRequest {
   return typeof body === "object" && body !== null;
+}
+
+const roundMoney = (n: number) => Math.round(n * 100) / 100;
+
+/** Selling price per unit after a quote-specific percentage discount (0-100). */
+export function applyDiscount(price: number, discountPercent: number | undefined): number {
+  const pct = Math.min(100, Math.max(0, Number(discountPercent) || 0));
+  return roundMoney((Number(price) || 0) * (1 - pct / 100));
+}
+
+/** Net price for a line: an explicit netPrice wins, else list less discount. */
+export function lineNetPrice(item: { unitPrice: number; discountPercent?: number; netPrice?: number }): number {
+  if (typeof item.netPrice === "number" && Number.isFinite(item.netPrice) && item.netPrice >= 0) {
+    return roundMoney(item.netPrice);
+  }
+  return applyDiscount(item.unitPrice, item.discountPercent);
 }
 
 // ── Route handler ────────────────────────────────────────────────────────
@@ -109,6 +130,18 @@ router.post("/generate", (req: Request, res: Response) => {
       y += addrLines + 6;
     }
 
+    // ── Equipment lines: instrument + serial number ──────────────
+    if (data.productName) {
+      doc.font(FONT_REG).fontSize(10).fillColor(TEXT_COLOR)
+         .text(`Instrument: ${data.productName}`, ML, y, { width: 300 });
+      y += 13;
+    }
+    if (data.serialNumber) {
+      doc.font(FONT_REG).fontSize(10).fillColor(TEXT_COLOR)
+         .text(`Serial Number: ${data.serialNumber}`, ML, y, { width: 300 });
+      y += 13;
+    }
+
     // ── QUOTE# boxed — right side, same level as customer name ──────────
     drawQuoteNumBox(doc, quoteNum, MR - 184, customerTopY, TEXT_COLOR);
 
@@ -130,7 +163,7 @@ router.post("/generate", (req: Request, res: Response) => {
         partNum: "",
         qty: 1,
         listPrice: data.servicePrice ?? 0,
-        netPrice: data.servicePrice ?? 0,
+        netPrice: applyDiscount(data.servicePrice ?? 0, data.serviceDiscountPercent),
       });
     }
 
@@ -141,7 +174,7 @@ router.post("/generate", (req: Request, res: Response) => {
           partNum: part.partNumber || "",
           qty: part.quantity || 1,
           listPrice: part.unitPrice || 0,
-          netPrice: part.netPrice ?? part.unitPrice ?? 0,
+          netPrice: lineNetPrice(part),
         });
       }
     }
@@ -164,7 +197,9 @@ router.post("/generate", (req: Request, res: Response) => {
           y += HDR_H;
         }
 
-        const ext = item.qty * item.listPrice;
+        // Extended price uses the discounted (net) price; the list price
+        // column keeps showing the catalog price so the discount is visible.
+        const ext = roundMoney(item.qty * item.netPrice);
         extTotal += ext;
 
         // Show net price only if different from list
@@ -189,8 +224,8 @@ router.post("/generate", (req: Request, res: Response) => {
     }
 
     // ── S&H and Total rows ───────────────────────────────────────
-    const shipping = data.shipping || 0;
-    const total = extTotal + shipping;
+    const shipping = Number(data.shipping) || 0;
+    const total = roundMoney(extTotal + shipping);
 
     y = tableTotals(doc, y, "Shipping & Handling Estimate", "Total", fmtMoney(total), TEXT_COLOR, BORDER_COLOR);
 
