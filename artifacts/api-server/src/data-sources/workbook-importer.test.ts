@@ -154,7 +154,7 @@ test("readSheet fails loudly when a required column is missing", () => {
   xlsx.utils.book_append_sheet(blank, xlsx.utils.aoa_to_sheet([["Foo"]]), "Asset Data");
   assert.throws(
     () => importWorkbook({ id: "x", name: "x", primary: { workbook: blank, file: fileInfo("blank") } }),
-    /"Serial Number" or "Asset Name"/,
+    /"Serial Number" or "Serial No"/,
   );
 });
 

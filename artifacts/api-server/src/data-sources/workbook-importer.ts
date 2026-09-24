@@ -24,6 +24,7 @@
  */
 import xlsx from "xlsx";
 import type {
+  ProductCategory,
   DataSourceManifest,
   NormalizedAsset,
   NormalizedProduct,
@@ -37,48 +38,128 @@ export const PRICING_SHEET = "Pricing Data";
 
 type AssetField = Exclude<keyof NormalizedAsset, "assetName">;
 
-/** Normalized asset field -> accepted column headers, in order of preference. */
+/**
+ * Normalized asset field -> accepted column headers, in order of preference.
+ * Headers are matched after normalizing (lower-case, punctuation collapsed to
+ * spaces), so "Serial #", "serial_number" and "Serial Number" all match. An
+ * alias starting with "~" matches any header that *contains* that text and
+ * is tried only after every exact alias has failed.
+ */
 const ASSET_HEADERS: Record<AssetField, string[]> = {
-  serialNumber: ["Serial Number", "Asset Name"],
-  accountName: ["Account Name", "Account: Account Name"],
-  facilityName: ["shortened facility name", "Facility Code"],
-  serviceTerritory: ["Service Territory: Name", "Service Territory"],
-  primaryTechnician: ["Primary Service Technician", "Primary FAS"],
-  contractNumber: ["Synced Contract: Contract Number", "Contract Number"],
-  contractType: ["Synced Contract: Contract Type", "Contract Type"],
-  contractEndDate: ["Synced Contract: Contract End Date", "Contract End Date"],
-  productName: ["Product: Product Name", "Product Name"],
-  contactName: ["Contact: Full Name", "Contact Name"],
-  contactEmail: ["Contact: Email", "Contact Email"],
-  street: ["Street"],
-  city: ["City"],
-  stateZip: ["State and Zip code", "State and Zip", "State/Zip"],
+  serialNumber: ["Serial Number", "Serial No", "Serial No.", "Serial #", "Serial", "S/N", "SN", "Instrument Serial Number", "Asset Serial Number", "~serial", "Asset Name"],
+  accountName: ["Account Name", "Account: Account Name", "Customer Name", "Customer", "Client Name", "Client", "Company Name", "Company", "Account", "Organization"],
+  facilityName: ["shortened facility name", "Facility Code", "Facility Name", "Facility", "Site Name", "Site", "Location Name", "Location", "Department"],
+  serviceTerritory: ["Service Territory: Name", "Service Territory", "Territory", "Service Region"],
+  primaryTechnician: ["Primary Service Technician", "Primary FAS", "Technician", "Service Technician", "FSE", "Engineer"],
+  contractNumber: ["Synced Contract: Contract Number", "Contract Number", "Contract No", "Contract #", "Agreement Number", "Agreement #"],
+  contractType: ["Synced Contract: Contract Type", "Contract Type", "Contract", "Coverage Type", "Coverage", "Service Level", "Service Plan", "Agreement Type", "Warranty Type", "Plan"],
+  contractEndDate: ["Synced Contract: Contract End Date", "Contract End Date", "Contract End", "Coverage End Date", "Contract Expiration", "Expiration Date", "Expires", "Warranty End Date", "End Date"],
+  productName: ["Product: Product Name", "Product Name", "Product", "Model", "Model Name", "Instrument Model", "Instrument Name", "Instrument", "Equipment Name", "Equipment", "Asset Model"],
+  contactName: ["Contact: Full Name", "Contact Name", "Contact", "Primary Contact", "Contact Person", "Customer Contact"],
+  contactEmail: ["Contact: Email", "Contact Email", "Contact E-mail", "Email", "E-mail"],
+  street: ["Street", "Street Address", "Address", "Address 1", "Address Line 1", "Installed Address", "Site Address", "Ship To Address"],
+  city: ["City", "Town"],
+  stateZip: ["State and Zip code", "State and Zip", "State/Zip", "State Zip", "State, Zip"],
   region: ["Region"],
   country: ["Country"],
-  assetStatus: ["Status"],
-  installDate: ["Install Date"],
+  assetStatus: ["Status", "Asset Status", "Instrument Status", "Equipment Status"],
+  installDate: ["Install Date", "Installation Date", "Installed Date", "Installed", "Install"],
 };
+
+/**
+ * Extra asset columns that feed a normalized field without being one: a
+ * separate State + ZIP pair becomes `stateZip`. All optional.
+ */
+const ASSET_EXTRA_HEADERS = {
+  state: ["State", "State/Province", "Province"],
+  zip: ["Zip", "ZIP Code", "Zip Code", "Postal Code", "Postcode"],
+} as const;
+type AssetExtraField = keyof typeof ASSET_EXTRA_HEADERS;
 
 /** Fields an Asset Data sheet must have to be usable at all. */
 const REQUIRED_ASSET_FIELDS: AssetField[] = ["serialNumber", "accountName"];
 
 const PRICING_HEADERS = {
-  partName: ["Display Name", "Product Name", "Description"],
-  unit: ["Sale Unit", "Unit"],
-  listPrice: ["Unit Price", "List Price", "Price"],
-  partNumber: ["Part Number", "Product Number", "Item Number"],
-  itemInternalId: ["Item Internal ID"],
+  partName: ["Display Name", "Product Name", "Description", "Item Name", "Item Description", "Item", "Name", "Product"],
+  unit: ["Sale Unit", "Unit", "UOM", "Unit of Measure", "Sales Unit", "Billing Unit"],
+  listPrice: ["Unit Price", "List Price", "Price", "MSRP", "Sell Price", "Sale Price", "Rate"],
+  partNumber: ["Part Number", "Product Number", "Item Number", "Part No", "Part #", "SKU", "Item Code", "Product Code", "Catalog Number", "Model Number", "Code"],
+  itemInternalId: ["Item Internal ID", "Internal ID", "Item ID"],
+  /** Optional explicit classification; honored before any heuristic. */
+  category: ["Category", "Item Category", "Product Category", "Type", "Item Type", "Product Type", "Record Type", "Line Type", "Class", "Kind"],
 } as const;
 type PricingField = keyof typeof PRICING_HEADERS;
-const REQUIRED_PRICING_FIELDS: PricingField[] = ["partName", "listPrice", "partNumber"];
+const REQUIRED_PRICING_FIELDS: PricingField[] = ["partName", "listPrice"];
 
-/** Sale units that identify a service/contract SKU rather than a physical part. */
-const SERVICE_UNITS = new Set(["year", "2 years", "3 years", "hour"]);
+/**
+ * Sale units that identify a service or contract SKU (sold per period of
+ * time or per visit) rather than a physical item.
+ */
+const SERVICE_UNITS = new Set([
+  "year", "years", "2 years", "3 years", "yr", "annual", "per year",
+  "month", "months", "per month",
+  "week", "weeks",
+  "day", "days", "per day",
+  "hour", "hours", "hr", "hrs", "per hour",
+  "visit", "visits", "per visit",
+]);
+
+/** Explicit category cell values (a "Category"/"Type" column) -> normalized category. */
+function categoryFromLabel(label: string): ProductCategory | null {
+  const l = label.trim().toLowerCase();
+  if (!l) return null;
+  if (/contract|agreement|warranty|coverage|subscription|plan|service|labor|labour|support|training|install|calibrat|maint|repair|visit|travel/.test(l)) return "Service";
+  if (/instrument|system|equipment|analy[sz]er|cytometer|machine|capital|hardware|unit/.test(l)) return "Instrument";
+  if (/part|component|consumable|accessor|spare|kit|reagent|supply|supplies|material|product|item|goods/.test(l)) return "Parts";
+  return null;
+}
+
+/** Name heuristics, used only when a workbook carries no structural category signal. */
+const SERVICE_NAME = /\b(service|services|support|maintenance|training|installation|install|calibration|labor|labour|travel|on-?site|repair|visit|inspection|contract|agreement|warranty|coverage|subscription|plan|pm)\b/i;
+const INSTRUMENT_NAME = /\b(instrument|analy[sz]er|cytometer|system|platform|machine)\b/i;
+/** A physical-item noun outranks the words above ("Laser Shield Support" and "Instrument Filter" are parts). */
+const PART_NOUN = /\b(bracket|plate|mount|kit|filter|filters|cable|board|assembly|assy|cover|frame|tubing|tube|probe|lens|prism|module|sensor|pump|valve|screw|switch|fan|motor|beads|reagent|bottle|adapter|holder|spring|crate|label|manual|tray|seal|gasket|o-ring|fuse|belt|laser|pcb|harness|fitting|nozzle|syringe|cartridge|card|drive|supply|battery|hose|clamp|knob|panel|shield|window|mirror|diode|fiber|fibre)\b/i;
+
+interface ClassifyInput {
+  name: string;
+  unit: string;
+  listPrice: number;
+  hasInternalId: boolean;
+  explicitCategory: string;
+}
+interface ClassifyContext {
+  /** true when the sheet has an item-id column that most rows fill in (Cytek-style catalogs). */
+  idSignal: boolean;
+}
+
+/**
+ * Which quote control a pricing row belongs to.
+ *  1. An explicit Category/Type column wins.
+ *  2. Time/visit sale units are services (contracts included).
+ *  3. Catalogs with a populated item-id column: priced rows without an id are
+ *     ad-hoc services, everything else is a part (the original Cytek rule).
+ *  4. Otherwise the name decides: instruments/systems, services, else parts.
+ */
+export function classifyProduct(row: ClassifyInput, ctx: ClassifyContext): ProductCategory {
+  const explicit = categoryFromLabel(row.explicitCategory);
+  if (explicit) return explicit;
+  if (SERVICE_UNITS.has(row.unit.trim().toLowerCase())) return "Service";
+  if (ctx.idSignal) return !row.hasInternalId && row.listPrice > 0 ? "Service" : "Parts";
+  if (PART_NOUN.test(row.name)) return "Parts";
+  if (SERVICE_NAME.test(row.name)) return "Service";
+  if (INSTRUMENT_NAME.test(row.name)) return "Instrument";
+  return "Parts";
+}
 
 const REJECT_SAMPLE_LIMIT = 10;
 
 /** Rows whose only name is an adjustment label (no display name in the source). */
 const ADJUSTMENT_NAME = /discount|surcharge|offset|allowance|trade-in/i;
+
+/** Header text -> comparison key: lower-case, punctuation/whitespace collapsed. */
+export function normalizeHeader(h: string): string {
+  return h.toLowerCase().replace(/[^a-z0-9]+/g, " ").trim();
+}
 
 function str(v: unknown): string {
   if (v === null || v === undefined) return "";
@@ -143,26 +224,45 @@ export function readSheet<F extends string>(
   const headerRow = (grid[0] ?? []).map((h) => str(h));
   const index = new Map<string, number>();
   headerRow.forEach((h, i) => {
-    if (h && !index.has(h.toLowerCase())) index.set(h.toLowerCase(), i);
+    const key = normalizeHeader(h);
+    if (key && !index.has(key)) index.set(key, i);
   });
 
   const columns: Partial<Record<F, number>> = {};
   const headersUsed: Partial<Record<F, string>> = {};
+  const taken = new Set<number>();
   for (const field of Object.keys(headers) as F[]) {
+    let col: number | undefined;
     for (const h of headers[field]) {
-      const col = index.get(h.toLowerCase());
-      if (col !== undefined) {
-        columns[field] = col;
-        headersUsed[field] = headerRow[col];
+      if (h.startsWith("~")) continue;
+      const c = index.get(normalizeHeader(h));
+      if (c !== undefined && !taken.has(c)) {
+        col = c;
         break;
       }
+    }
+    if (col === undefined) {
+      for (const h of headers[field]) {
+        if (!h.startsWith("~")) continue;
+        const needle = normalizeHeader(h.slice(1));
+        const c = headerRow.findIndex((raw, i) => !taken.has(i) && normalizeHeader(raw).includes(needle));
+        if (c >= 0) {
+          col = c;
+          break;
+        }
+      }
+    }
+    if (col !== undefined) {
+      columns[field] = col;
+      headersUsed[field] = headerRow[col];
+      taken.add(col);
     }
   }
   const missing = required.filter((f) => columns[f] === undefined);
   if (missing.length) {
     throw new Error(
       `${fileLabel}: sheet "${sheetName}" is missing expected column(s): ` +
-        missing.map((f) => headers[f].map((h) => `"${h}"`).join(" or ")).join(", ") +
+        missing.map((f) => headers[f].filter((h) => !h.startsWith("~")).slice(0, 4).map((h) => `"${h}"`).join(" or ") + (headers[f].length > 4 ? " (or similar)" : "")).join(", ") +
         `. Found: ${headerRow.filter(Boolean).join(" | ")}`,
     );
   }
@@ -241,10 +341,20 @@ export function importWorkbook(input: WorkbookImportInput): WorkbookImportResult
     mappings[field] = `primary ${ASSET_SHEET}!${header}`;
   }
 
+  // Separate State / ZIP columns (common outside the Cytek export) feed stateZip.
+  const extras = readSheet<AssetExtraField>(input.primary.workbook, ASSET_SHEET, ASSET_EXTRA_HEADERS, [], primaryLabel);
+  if (!primaryAssets.headersUsed.stateZip && (extras.headersUsed.state || extras.headersUsed.zip)) {
+    mappings["stateZip"] = `primary ${ASSET_SHEET}!${[extras.headersUsed.state, extras.headersUsed.zip].filter(Boolean).join(" + ")}`;
+  }
+
   const assets: NormalizedAsset[] = [];
   const byKey = new Map<string, NormalizedAsset>();
-  for (const row of primaryAssets.rows) {
+  for (const [i, row] of primaryAssets.rows.entries()) {
     const a = assetFromRow(row);
+    if (!a.stateZip) {
+      const extra = extras.rows[i];
+      a.stateZip = [str(extra?.state), str(extra?.zip)].filter(Boolean).join(" ");
+    }
     if (!a.serialNumber) {
       if (a.accountName || a.productName) rejected.add("asset: blank serial number", a.accountName || a.productName);
       continue;
@@ -310,6 +420,11 @@ export function importWorkbook(input: WorkbookImportInput): WorkbookImportResult
   // ── Products (primary) ─────────────────────────────────────────────
   const pricing = readSheet(input.primary.workbook, PRICING_SHEET, PRICING_HEADERS, REQUIRED_PRICING_FIELDS, primaryLabel);
   const products: NormalizedProduct[] = [];
+  // The "no item id => ad-hoc service" rule only means something when the
+  // catalog actually assigns ids (Cytek does); a workbook without that column
+  // must not have every priced row become a service.
+  const idColumnRows = pricing.headersUsed.itemInternalId ? pricing.rows.filter((r) => str(r.partName) || str(r.partNumber)) : [];
+  const idSignal = idColumnRows.length > 0 && idColumnRows.filter((r) => str(r.itemInternalId) !== "").length * 2 >= idColumnRows.length;
   for (const r of pricing.rows) {
     const displayName = str(r.partName);
     const partNumber = str(r.partNumber);
@@ -329,17 +444,16 @@ export function importWorkbook(input: WorkbookImportInput): WorkbookImportResult
     }
     const listPrice = price === null ? 0 : roundMoney(price);
     const unit = str(r.unit);
-    const hasInternalId = str(r.itemInternalId) !== "";
-    // Service SKUs are sold per year/hour, or are the few ad-hoc priced rows
-    // with no internal item id (e.g. "On-Site Support (2 days)"). Unpriced
-    // rows without an id are usually placeholders, so they stay "Parts".
-    const isService = SERVICE_UNITS.has(unit.toLowerCase()) || (!hasInternalId && listPrice > 0);
+    const category = classifyProduct(
+      { name: partName, unit, listPrice, hasInternalId: str(r.itemInternalId) !== "", explicitCategory: str(r.category) },
+      { idSignal },
+    );
     products.push({
       partName,
       partNumber,
       listPrice,
       netPrice: listPrice,
-      category: isService ? "Service" : "Parts",
+      category,
       unit,
       priced: listPrice > 0,
     });
@@ -351,7 +465,11 @@ export function importWorkbook(input: WorkbookImportInput): WorkbookImportResult
   productMappings["partName"] = `${productMappings["partName"]}; falls back to partNumber when blank`;
   productMappings["listPrice"] = `${productMappings["listPrice"]} (rounded to cents; 0 with priced=false when blank/zero)`;
   productMappings["netPrice"] = "= listPrice (the workbook has no customer net price; 'Last Purchase Price' is internal cost and is not imported)";
-  productMappings["category"] = `Service if ${pricing.headersUsed.unit ?? "Sale Unit"} is Year/2 Years/3 Years/Hour, or the row is priced but has no ${pricing.headersUsed.itemInternalId ?? "Item Internal ID"}; otherwise Parts`;
+  productMappings["category"] = pricing.headersUsed.category
+    ? `${pricing.headersUsed.category} column when recognized; else Service if ${pricing.headersUsed.unit ?? "unit"} is a time/visit unit; else ${idSignal ? `Service when priced with no ${pricing.headersUsed.itemInternalId}` : "by name (instrument/service keywords)"}; otherwise Parts`
+    : idSignal
+      ? `Service if ${pricing.headersUsed.unit ?? "Sale Unit"} is a time/visit unit (Year/2 Years/3 Years/Hour/…), or the row is priced but has no ${pricing.headersUsed.itemInternalId}; otherwise Parts`
+      : `Service if ${pricing.headersUsed.unit ?? "unit"} is a time/visit unit; else by name: physical-item nouns => Parts, service/contract words => Service, instrument/system words => Instrument; otherwise Parts (add a "Category" column to the sheet to classify rows explicitly)`;
 
   const unpriced = products.filter((p) => !p.priced).length;
   const manifest: DataSourceManifest = {

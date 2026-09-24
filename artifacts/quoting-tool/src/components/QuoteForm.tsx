@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo } from "react";
+import React, { useEffect, useMemo, useRef } from "react";
 import { useForm, useFieldArray } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
@@ -66,10 +66,14 @@ const quoteFormSchema = z.object({
 
 type QuoteFormValues = z.infer<typeof quoteFormSchema>;
 
+/** The seeded Cytek source; the only one that still gets the legacy service labels below. */
+const CYTEK_SEED_ID = "cytek";
+
 /**
  * Service labels that predate the data-driven service list. They have no
  * catalog price, so selecting one sets the price to 0 for manual entry.
- * Kept so existing users can still pick the wording they are used to.
+ * Kept for the Cytek source only, so existing users can still pick the
+ * wording they are used to; every other source shows its own catalog only.
  */
 const LEGACY_SERVICE_TYPES = [
   "On-Site Support (1 day)",
@@ -99,12 +103,13 @@ export function QuoteForm({ dataSourceId, sources, onSwitch }: QuoteFormProps) {
     query: { queryKey: getListPartsQueryKey(dsParams) },
   });
 
-  // Services come from the data source ("Service" category: on-site support,
-  // service contracts, ...) followed by the legacy labels not in the catalog.
+  // Service Type lists the source's "Service" records (labor, support,
+  // contracts); Parts Configuration lists everything else (parts and
+  // instruments). Both come only from the active source.
   const services = useMemo<PartItem[]>(() => {
     const fromCatalog = (partsData?.parts ?? []).filter((p) => p.category === "Service");
     const known = new Set(fromCatalog.map((p) => p.partName.trim().toLowerCase()));
-    const legacy = LEGACY_SERVICE_TYPES.filter((n) => !known.has(n.toLowerCase())).map((partName) => ({
+    const legacy = (dataSourceId === CYTEK_SEED_ID ? LEGACY_SERVICE_TYPES : []).filter((n) => !known.has(n.toLowerCase())).map((partName) => ({
       partName,
       partNumber: "",
       listPrice: 0,
@@ -112,7 +117,8 @@ export function QuoteForm({ dataSourceId, sources, onSwitch }: QuoteFormProps) {
       category: "Service",
     }));
     return [...fromCatalog, ...legacy];
-  }, [partsData]);
+  }, [partsData, dataSourceId]);
+  const lineItems = useMemo<PartItem[]>(() => (partsData?.parts ?? []).filter((p) => p.category !== "Service"), [partsData]);
 
   const form = useForm<QuoteFormValues>({
     resolver: zodResolver(quoteFormSchema),
@@ -146,7 +152,7 @@ export function QuoteForm({ dataSourceId, sources, onSwitch }: QuoteFormProps) {
     {
       query: {
         queryKey: getLookupAssetQueryKey(lookupParams),
-        enabled: !!serialNumber && serialNumber.length > 2,
+        enabled: !!serialNumber && serialNumber.trim().length > 0,
         retry: false,
       },
     }
@@ -180,39 +186,62 @@ export function QuoteForm({ dataSourceId, sources, onSwitch }: QuoteFormProps) {
     return !!match && match.priced === false && !(Number(price) > 0);
   };
   const productSecondary = (item: PartItem) =>
-    `${item.partNumber || ""}${item.priced === false ? " · no list price" : ""}`.trim();
+    `${item.partNumber || ""}${item.category === "Instrument" ? " · instrument" : ""}${item.priced === false ? " · no list price" : ""}`.trim();
 
   // Serial-not-found hint: shown once the typed value can no longer match any
   // serial in the data source (so it does not flash while typing a prefix).
   const serialQuery = (serialNumber ?? "").trim().toLowerCase();
   const serialHasCandidates = useMemo(() => {
-    if (!serialsData?.serials || serialQuery.length < 3) return true;
+    if (!serialsData?.serials || serialQuery.length < 1) return true;
     return serialsData.serials.some((s) => s.toLowerCase().includes(serialQuery));
   }, [serialsData, serialQuery]);
 
-  // Auto-fill fields from the asset lookup. Every looked-up field is
-  // replaced, blanks included, so switching serials never leaves the previous
-  // asset's address/contract on the form. All of it stays editable.
+  // Serial-driven population. Selecting a serial finds the asset in the
+  // active source and fills every field the record supplies (blank when the
+  // record has nothing: values are never invented). What was filled is
+  // remembered so that changing or clearing the serial removes the previous
+  // asset's data while anything the user typed over it is kept.
+  type AutoField = "customerName" | "accountName" | "facilityName" | "address" | "contractType" | "contractStatus" | "productName";
+  const autoFilled = useRef<{ serial: string; values: Partial<Record<AutoField, string>> } | null>(null);
+  const norm = (s: string | undefined) => (s ?? "").trim().toLowerCase();
+
   useEffect(() => {
-    if (assetData?.asset) {
-      const asset = assetData.asset;
-      const fullAddress = [asset.street, asset.city, asset.stateZip].filter(Boolean).join(", ");
-      const set = (field: "accountName" | "facilityName" | "address" | "contractType" | "contractStatus" | "productName", value: string) => {
-        setValue(field, value, { shouldValidate: field === "accountName" });
-      };
-      set("accountName", asset.accountName ?? "");
-      set("facilityName", asset.facilityName ?? "");
-      set("address", fullAddress);
-      set("contractType", asset.contractType ?? "");
-      set("contractStatus", asset.contractStatus ?? "");
-      set("productName", asset.productName ?? "");
-      
-      toast({
-        title: "Asset found",
-        description: `Loaded data for ${asset.assetName || serialNumber}`,
-      });
+    const prev = autoFilled.current;
+    if (!prev || norm(serialNumber) === norm(prev.serial)) return;
+    // The serial no longer matches the asset that populated the form.
+    for (const [field, value] of Object.entries(prev.values) as [AutoField, string][]) {
+      if (form.getValues(field) === value) setValue(field, "", { shouldValidate: false });
     }
-  }, [assetData, setValue, serialNumber, toast]);
+    autoFilled.current = null;
+  }, [serialNumber, form, setValue]);
+
+  useEffect(() => {
+    const asset = assetData?.asset;
+    if (!asset || norm(asset.serialNumber) !== norm(serialNumber)) return;
+    const fullAddress = [asset.street, asset.city, asset.stateZip].filter(Boolean).join(", ");
+    const values: Partial<Record<AutoField, string>> = {
+      accountName: asset.accountName ?? "",
+      facilityName: asset.facilityName ?? "",
+      address: fullAddress,
+      contractType: asset.contractType ?? "",
+      contractStatus: asset.contractStatus ?? "",
+      productName: asset.productName ?? "",
+    };
+    // Customer Name is the person on the quote: taken from the asset's contact
+    // when the field is still empty (or holds a previous auto-fill).
+    const current = form.getValues("customerName");
+    const previous = autoFilled.current?.values.customerName;
+    if (asset.contactName && (!current || current === previous)) values.customerName = asset.contactName;
+    for (const [field, value] of Object.entries(values) as [AutoField, string][]) {
+      setValue(field, value, { shouldValidate: field === "accountName" || field === "customerName" });
+    }
+    autoFilled.current = { serial: asset.serialNumber, values };
+
+    toast({
+      title: "Asset found",
+      description: `Loaded data for ${asset.assetName || serialNumber}`,
+    });
+  }, [assetData, setValue, serialNumber, toast, form]);
 
   const generateMutation = useGenerateQuote({
     mutation: {
@@ -368,6 +397,8 @@ export function QuoteForm({ dataSourceId, sources, onSwitch }: QuoteFormProps) {
               onChange={(val) => setValue("serialNumber", val, { shouldValidate: true })}
               getDisplayValue={(item: string) => item}
               placeholder="Type or select serial..."
+              aria-label="Serial Number"
+              name="serialNumber"
               disabled={isLoadingSerials}
               icon={isFetchingAsset ? <Loader2 className="w-4 h-4 animate-spin text-primary" /> : <Search className="w-4 h-4 text-muted-foreground" />}
             />
@@ -449,6 +480,9 @@ export function QuoteForm({ dataSourceId, sources, onSwitch }: QuoteFormProps) {
               onSelect={(item: PartItem) => {
                 setValue("servicePrice", item.listPrice || 0, { shouldValidate: true });
               }}
+              onClear={() => setValue("servicePrice", 0, { shouldValidate: true })}
+              aria-label="Service Type"
+              name="serviceType"
               getDisplayValue={(item: PartItem) => item.partName}
               getSearchValue={(item: PartItem) => `${item.partName} ${item.partNumber || ""}`}
               getSecondaryValue={productSecondary}
@@ -551,13 +585,19 @@ export function QuoteForm({ dataSourceId, sources, onSwitch }: QuoteFormProps) {
                   <div className="lg:col-span-3">
                     <InputLabel required>Part Description</InputLabel>
                     <Autocomplete
-                      items={partsData?.parts || []}
+                      items={lineItems}
                       value={watch(`parts.${index}.description`)}
                       onChange={(val) => setValue(`parts.${index}.description`, val, { shouldValidate: true })}
                       onSelect={(item: PartItem) => {
                         setValue(`parts.${index}.partNumber`, item.partNumber || "");
                         setValue(`parts.${index}.unitPrice`, roundMoney(item.listPrice || 0), { shouldValidate: true });
                       }}
+                      onClear={() => {
+                        setValue(`parts.${index}.partNumber`, "");
+                        setValue(`parts.${index}.unitPrice`, 0, { shouldValidate: true });
+                      }}
+                      aria-label="Part Description"
+                      name={`parts.${index}.description`}
                       getDisplayValue={(item: PartItem) => item.partName}
                       getSearchValue={(item: PartItem) => `${item.partName} ${item.partNumber || ""}`}
                       getSecondaryValue={productSecondary}
