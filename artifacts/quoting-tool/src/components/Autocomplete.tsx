@@ -9,6 +9,8 @@ interface AutocompleteProps<T> {
   onSelect?: (item: T) => void;
   getDisplayValue: (item: T) => string;
   getSearchValue?: (item: T) => string;
+  /** Optional muted text shown next to each option (e.g. a part number) to tell duplicates apart. */
+  getSecondaryValue?: (item: T) => string;
   placeholder?: string;
   className?: string;
   disabled?: boolean;
@@ -22,6 +24,7 @@ export function Autocomplete<T>({
   onSelect,
   getDisplayValue,
   getSearchValue,
+  getSecondaryValue,
   placeholder = "Search...",
   className,
   disabled = false,
@@ -79,6 +82,7 @@ export function Autocomplete<T>({
             ) : (
               filteredItems.map((item, index) => {
                 const display = getDisplayValue(item);
+                const secondary = getSecondaryValue ? getSecondaryValue(item) : "";
                 const isSelected = display === value;
                 return (
                   <div
@@ -94,7 +98,10 @@ export function Autocomplete<T>({
                     }}
                   >
                     <span className="truncate">{display}</span>
-                    {isSelected && <Check className="w-4 h-4 shrink-0" />}
+                    <span className="flex items-center gap-2 shrink-0 pl-3">
+                      {secondary && <span className="text-xs text-muted-foreground font-mono">{secondary}</span>}
+                      {isSelected && <Check className="w-4 h-4 shrink-0" />}
+                    </span>
                   </div>
                 );
               })

@@ -18,6 +18,7 @@ import type {
 
 import type {
   AssetLookupResult,
+  DataSourceSummary,
   ErrorResponse,
   HealthStatus,
   LookupAssetParams,
@@ -34,6 +35,81 @@ type AwaitedInput<T> = PromiseLike<T> | T;
 type Awaited<O> = O extends AwaitedInput<infer T> ? T : never;
 
 type SecondParameter<T extends (...args: never) => unknown> = Parameters<T>[1];
+
+/**
+ * @summary Describe the default data source (name, import date, record counts)
+ */
+export const getGetDataSourceUrl = () => {
+  return `/api/data-source`;
+};
+
+export const getDataSource = async (
+  options?: RequestInit,
+): Promise<DataSourceSummary> => {
+  return customFetch<DataSourceSummary>(getGetDataSourceUrl(), {
+    ...options,
+    method: "GET",
+  });
+};
+
+export const getGetDataSourceQueryKey = () => {
+  return [`/api/data-source`] as const;
+};
+
+export const getGetDataSourceQueryOptions = <
+  TData = Awaited<ReturnType<typeof getDataSource>>,
+  TError = ErrorType<unknown>,
+>(options?: {
+  query?: UseQueryOptions<
+    Awaited<ReturnType<typeof getDataSource>>,
+    TError,
+    TData
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}) => {
+  const { query: queryOptions, request: requestOptions } = options ?? {};
+
+  const queryKey = queryOptions?.queryKey ?? getGetDataSourceQueryKey();
+
+  const queryFn: QueryFunction<Awaited<ReturnType<typeof getDataSource>>> = ({
+    signal,
+  }) => getDataSource({ signal, ...requestOptions });
+
+  return { queryKey, queryFn, ...queryOptions } as UseQueryOptions<
+    Awaited<ReturnType<typeof getDataSource>>,
+    TError,
+    TData
+  > & { queryKey: QueryKey };
+};
+
+export type GetDataSourceQueryResult = NonNullable<
+  Awaited<ReturnType<typeof getDataSource>>
+>;
+export type GetDataSourceQueryError = ErrorType<unknown>;
+
+/**
+ * @summary Describe the default data source (name, import date, record counts)
+ */
+
+export function useGetDataSource<
+  TData = Awaited<ReturnType<typeof getDataSource>>,
+  TError = ErrorType<unknown>,
+>(options?: {
+  query?: UseQueryOptions<
+    Awaited<ReturnType<typeof getDataSource>>,
+    TError,
+    TData
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+  const queryOptions = getGetDataSourceQueryOptions(options);
+
+  const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & {
+    queryKey: QueryKey;
+  };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
 
 /**
  * @summary Health check

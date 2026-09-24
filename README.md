@@ -92,11 +92,37 @@ The repo is set up to deploy as **one Vercel project** that serves both the fron
 4. No environment variables are required. `COMPANY_ID` is optional (defaults to `cytek`).
 5. Deploy. Every push to the production branch redeploys automatically.
 
-How it works: `pnpm run build:vercel` builds the static frontend and the API bundle (`artifacts/api-server/dist/vercel.cjs`). `api/index.js` is a one-line shim that re-exports that pre-built Express app, because Vercel only creates functions from files under `api/`. `vercel.json` includes `artifacts/api-server/src/data/**` (the Excel catalog and logo) in the function bundle and rewrites `/api/*` to it. Do **not** rely on Vercel's "Express" framework preset / zero-config TypeScript compilation — it cannot resolve this monorepo's workspace packages (see `DEVELOPMENT_NOTES.md`).
+How it works: `pnpm run build:vercel` builds the static frontend and the API bundle (`artifacts/api-server/dist/vercel.cjs`). `api/index.js` is a one-line shim that re-exports that pre-built Express app, because Vercel only creates functions from files under `api/`. `vercel.json` includes `artifacts/api-server/src/data/**` (the company logo) in the function bundle; the asset/pricing data is compiled into the API bundle itself and rewrites `/api/*` to it. Do **not** rely on Vercel's "Express" framework preset / zero-config TypeScript compilation — it cannot resolve this monorepo's workspace packages (see `DEVELOPMENT_NOTES.md`).
 
 You can reproduce the exact Vercel build locally with `npx vercel build` from the repo root (output lands in `.vercel/output`, which is gitignored).
 
 Vercel-specific limits to be aware of: request bodies are capped at 4.5 MB (the FSE upload form allows up to 20 MB elsewhere), and the function has a 30 s `maxDuration`.
+
+## Data Sources (asset and pricing data)
+
+Manual Mode looks up serial numbers and products against a **Data Source**: a company's asset catalog and product/pricing catalog, already normalized into the shape the app expects. Today there is one, **Cytek**, and it is the default; nothing has to be selected or uploaded to create a quote.
+
+The Cytek data is imported **once** from the Cytek Quoting Tool workbook and committed as JSON:
+
+```text
+artifacts/api-server/src/data-sources/cytek/
+├── source/cytek-quoting-tool-rev6.xlsx   # primary: which assets exist, account, product, contract, pricing
+├── source/cytek-quoting-tool-rev5.xlsx   # supplement: facility code, address, contact (columns Rev6 no longer exports)
+├── importer.ts                           # Rev6/Rev5 -> normalized records (the only Cytek-specific parsing)
+├── import.ts                             # CLI that runs the importer and writes the files below
+├── assets.json / products.json           # normalized data bundled into the server
+└── manifest.json                         # what was imported, from which files, counts, rejections, field mappings
+```
+
+To load a newer Cytek workbook: drop it in `source/` as `cytek-quoting-tool-rev6.xlsx` (or update the file name in `import.ts`), run
+
+```bash
+pnpm --filter @workspace/api-server run import:cytek
+```
+
+review the printed summary (counts and rejected rows), run `pnpm --filter @workspace/api-server test`, and commit the regenerated JSON. The import reads the workbook's `Asset Data` and `Pricing Data` sheets by column header; it never depends on the workbook's own lookup formulas. See `DEVELOPMENT_NOTES.md` for the field mapping and the design behind it.
+
+`GET /api/data-source` reports which data source is active, when it was imported and how many records it holds; the quote form shows this in one line under "Customer Information".
 
 ## Folder Structure
 
@@ -104,8 +130,10 @@ Vercel-specific limits to be aware of: request bodies are capped at 4.5 MB (the 
 quote-magic/
 ├── artifacts/
 │   ├── api-server/              # Express API server
-│   │   ├── src/data/            # quoting_data.xlsx, company logo (source data for the active company)
-│   │   ├── src/lib/             # excelParser.ts, fseUploadParser.ts, pdf.ts (reusable PDF drawing helpers)
+│   │   ├── src/data/            # company logo used in the PDF header
+│   │   ├── src/data-sources/    # Data Sources: normalized asset + pricing data behind Manual Mode (see below)
+│   │   │   └── cytek/           # Cytek importer, source workbooks, generated assets/products/manifest JSON
+│   │   ├── src/lib/             # fseUploadParser.ts, pdf.ts (reusable PDF drawing helpers)
 │   │   ├── src/routes/          # assets.ts, parts.ts, quotes.ts, upload.ts, health.ts
 │   │   └── src/middlewares/     # reserved for future Express middleware
 │   └── quoting-tool/            # React + Vite frontend

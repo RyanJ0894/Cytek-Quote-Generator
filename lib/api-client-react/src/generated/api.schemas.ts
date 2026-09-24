@@ -26,6 +26,23 @@ export interface AssetData {
   region?: string;
   serviceTerritory?: string;
   primaryTechnician?: string;
+  /** ISO date (YYYY-MM-DD) or empty when no contract. */
+  contractEndDate?: string;
+  country?: string;
+  /** Asset lifecycle status from the source, e.g. "Installed". */
+  assetStatus?: string;
+  /** ISO date (YYYY-MM-DD) or empty. */
+  installDate?: string;
+}
+
+export interface DataSourceSummary {
+  id: string;
+  name: string;
+  isDefault: boolean;
+  importedAt: string;
+  sourceFiles: string[];
+  assetCount: number;
+  productCount: number;
 }
 
 export interface AssetLookupResult {
@@ -41,7 +58,10 @@ export interface PartItem {
   partNumber?: string;
   listPrice: number;
   netPrice?: number;
+  /** "Service" or "Parts". */
   category?: string;
+  /** Sale unit from the source (e.g. "Each", "Year"). */
+  unit?: string;
 }
 
 export interface PartsListResult {

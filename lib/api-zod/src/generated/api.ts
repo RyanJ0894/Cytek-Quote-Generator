@@ -8,6 +8,19 @@
 import * as zod from "zod";
 
 /**
+ * @summary Describe the default data source (name, import date, record counts)
+ */
+export const GetDataSourceResponse = zod.object({
+  id: zod.string(),
+  name: zod.string(),
+  isDefault: zod.boolean(),
+  importedAt: zod.string(),
+  sourceFiles: zod.array(zod.string()),
+  assetCount: zod.number(),
+  productCount: zod.number(),
+});
+
+/**
  * @summary Health check
  */
 export const HealthCheckResponse = zod.object({
@@ -39,6 +52,19 @@ export const LookupAssetResponse = zod.object({
     region: zod.string().optional(),
     serviceTerritory: zod.string().optional(),
     primaryTechnician: zod.string().optional(),
+    contractEndDate: zod
+      .string()
+      .optional()
+      .describe("ISO date (YYYY-MM-DD) or empty when no contract."),
+    country: zod.string().optional(),
+    assetStatus: zod
+      .string()
+      .optional()
+      .describe('Asset lifecycle status from the source, e.g. \"Installed\".'),
+    installDate: zod
+      .string()
+      .optional()
+      .describe("ISO date (YYYY-MM-DD) or empty."),
   }),
 });
 
@@ -59,7 +85,11 @@ export const ListPartsResponse = zod.object({
       partNumber: zod.string().optional(),
       listPrice: zod.number(),
       netPrice: zod.number().optional(),
-      category: zod.string().optional(),
+      category: zod.string().optional().describe('\"Service\" or \"Parts\".'),
+      unit: zod
+        .string()
+        .optional()
+        .describe('Sale unit from the source (e.g. \"Each\", \"Year\").'),
     }),
   ),
 });

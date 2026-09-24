@@ -15,7 +15,7 @@ This Replit instance is currently configured for **Cytek Biosciences** (see `lib
 - **API framework**: Express 5
 - **Frontend**: React + Vite (Tailwind CSS, React Query, React Hook Form, Framer Motion)
 - **PDF generation**: pdfkit
-- **Excel parsing**: xlsx (reads `artifacts/api-server/src/data/quoting_data.xlsx`)
+- **Excel parsing**: xlsx (one-time import of the Cytek workbook into `artifacts/api-server/src/data-sources/cytek/`, plus Upload Mode)
 - **Validation**: Zod (`zod/v4`)
 - **API codegen**: Orval (from OpenAPI spec)
 - **Build**: esbuild (CJS bundle)
@@ -26,8 +26,9 @@ This Replit instance is currently configured for **Cytek Biosciences** (see `lib
 quote-magic/
 ├── artifacts/
 │   ├── api-server/          # Express API server
-│   │   ├── src/data/        # quoting_data.xlsx, logo (source data)
-│   │   ├── src/lib/         # excelParser.ts, fseUploadParser.ts, pdf.ts
+│   │   ├── src/data/        # logo
+│   │   ├── src/data-sources/ # Data Sources: cytek importer + generated assets/products JSON
+│   │   ├── src/lib/         # fseUploadParser.ts, pdf.ts
 │   │   └── src/routes/      # assets.ts, parts.ts, quotes.ts, upload.ts
 │   └── quoting-tool/        # React + Vite frontend
 │       └── src/
@@ -58,12 +59,13 @@ quote-magic/
 - `POST /api/quotes/generate` — Generate PDF quote (returns `application/pdf`)
 - `POST /api/quotes/parse-upload` — Parse an uploaded FSE Excel workbook into form data
 - `GET /api/healthz` — Health check
+- `GET /api/data-source` — Active data source summary
 
 ## Data Source
 
-Excel file: `artifacts/api-server/src/data/quoting_data.xlsx`
-- **Asset Data sheet**: 3,585 instrument records with serial, account, contract, contact, address
-- **Pricing Data sheet**: 5,178 parts with name, part number, list price, net price
+Manual Mode reads from the **Cytek** data source (default), generated from `Cytek Quoting Tool - Rev6.xlsx` (assets, pricing) with facility/address/contact columns carried over from Rev5. Regenerate with `pnpm --filter @workspace/api-server run import:cytek`; see `manifest.json` in `artifacts/api-server/src/data-sources/cytek/` for counts and field mappings.
+- **Asset Data**: 9,635 instruments with serial, account, product, contract type/number/end date, country, status
+- **Pricing Data**: 5,178 priced products (163 services/contracts, the rest parts)
 
 ## Running
 

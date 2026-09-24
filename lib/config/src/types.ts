@@ -56,6 +56,12 @@ export interface PdfTheme {
 export interface CompanyConfig {
   /** Stable identifier, e.g. "cytek". Used to select the active company. */
   id: string;
+  /**
+   * Which Data Source (asset + pricing catalog) Manual Mode looks up against
+   * for this company. See artifacts/api-server/src/data-sources. Defaults to
+   * the company id when omitted.
+   */
+  dataSourceId?: string;
   /** Full legal name, e.g. "Cytek Biosciences Inc." */
   legalName: string;
   /** Short/brand name, e.g. "Cytek". Used in UI copy. */

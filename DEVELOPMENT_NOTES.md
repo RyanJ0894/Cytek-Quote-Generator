@@ -14,24 +14,33 @@ Quote Magic is a pnpm-workspace monorepo with two deployable services and a set 
 └─────────────────────────┘        └──────────────────────────┘
               │                                  │
               ▼                                  ▼
-   lib/api-client-react              lib/config, artifacts/api-server/src/data
-   (generated React Query hooks,          (company config, quoting_data.xlsx,
-    typed from lib/api-spec)                logo)
+   lib/api-client-react              lib/config, artifacts/api-server/src/data-sources
+   (generated React Query hooks,          (company config, Data Source:
+    typed from lib/api-spec)                normalized assets + pricing, logo)
 ```
 
 - The **frontend** (`artifacts/quoting-tool`) is a static single-page app. It never talks to Excel or PDF generation directly — it calls the API server's JSON endpoints and downloads a PDF blob from `/api/quotes/generate`.
-- The **backend** (`artifacts/api-server`) owns all data (the Excel catalog) and all document generation (PDFKit). It is stateless — nothing is persisted between requests.
+- The **backend** (`artifacts/api-server`) owns all data (the Data Source, see below) and all document generation (PDFKit). It is stateless — nothing is persisted between requests.
 - **`lib/config`** is imported by both services and is the single source of truth for anything company-specific: name, address, contact info, logo, contract language, quote footer bullets, document titles, and PDF colors. See "Configuration System" below.
 - **`lib/api-spec` → `lib/api-zod` / `lib/api-client-react`**: the API surface is defined once in `lib/api-spec/openapi.yaml` and code-generated into a typed React Query client (`lib/api-client-react`) and Zod schemas (`lib/api-zod`). Do not hand-edit files under `src/generated/` in either package — re-run `pnpm --filter @workspace/api-spec run codegen`.
 - **`lib/db`** is a Drizzle ORM + Postgres scaffold that exists but is **not currently used** by any route. It's reserved for future persistence (quote history, user accounts). See "Known Limitations".
 
 ## Major Components
 
-### `artifacts/api-server/src/lib/excelParser.ts`
-Loads and caches `src/data/quoting_data.xlsx` (a two-sheet workbook: `Asset Data` and `Pricing Data`) on first use. Exposes `getAllSerials()`, `lookupAssetBySerial()`, and `getParts()`. The workbook is parsed once and cached in module-level variables (`_workbook`, `_assets`, `_parts`) — the process must be restarted to pick up a changed data file.
+### `artifacts/api-server/src/data-sources/` — Data Sources
+Manual Mode's lookup data belongs to a **Data Source**: one company's normalized asset catalog plus product/pricing catalog (`types.ts`: `NormalizedAsset`, `NormalizedProduct`, `DataSource`). Routes only ever call the `DataSource` interface (`listSerials`, `lookupAsset`, `listProducts`, `listServices`) obtained from `registry.ts` → `getDefaultDataSource()`. The default is chosen by the active company's `dataSourceId` (`@workspace/config`), so a second company means registering another source and pointing its `CompanyConfig` at it; routes and the frontend do not change.
+
+The pipeline is *source workbook → one-time import/transformation → normalized JSON committed in the repo → in-memory indexed lookups*:
+
+- `cytek/importer.ts` (`importCytek`) is the **only** code that knows Cytek's sheet names and column headers. It reads `Asset Data` and `Pricing Data` by header text (failing loudly if an expected column is missing) and never evaluates the workbook's VLOOKUP formulas. Rev6 is the primary input: it decides which assets exist and supplies account, product, contract number/type/end date, country, install date, asset status and all pricing. Rev6's asset export no longer contains the facility code, street/city/state, contact or territory columns, so those are carried over from the Rev5 workbook (the "supplement") for serials that still exist in Rev6; serials only in Rev5 are dropped. Assets with no facility code fall back to the account name so the PDF still shows the institution. Rejected rows (blank serial, blank name, unpriced product, supplement-only asset) are counted with examples in the manifest.
+- `cytek/import.ts` is the CLI (`pnpm --filter @workspace/api-server run import:cytek`). It writes `assets.json`, `products.json` (empty fields omitted) and `manifest.json` (sources + sha256, counts, rejections, field mappings, notes). Commit the result.
+- `static-source.ts` (`createStaticDataSource`) turns those records into a `DataSource`: serials indexed in a `Map`, lookups exact/case-insensitive/trimmed, and `contractStatus` **derived at lookup time** from `contractEndDate` ("Activated"/"Expired") so it never goes stale between imports.
+- `cytek/index.ts` imports the generated JSON (bundled into `dist/*.cjs` by esbuild, so no runtime file paths) and registers it.
+
+Products carry a `category` ("Service" when the sale unit is Year/2 Years/3 Years/Hour or the row has no internal item id, otherwise "Parts") and `unit`. `netPrice` equals `listPrice`: the workbook's "Last Purchase Price" is internal cost and is deliberately not imported or served. The form's Service Type field searches `category === "Service"` products (plus a few legacy labels with no price), and the parts search uses the full list.
 
 ### `artifacts/api-server/src/lib/fseUploadParser.ts`
-Pure parsing functions for the "FSE Input" sheet of an uploaded customer-filled workbook (a different, ad hoc format from `quoting_data.xlsx`). Deliberately has no Express/HTTP dependency so it can be unit tested directly.
+Pure parsing functions for the "FSE Input" sheet of an uploaded customer-filled workbook (Upload Mode). It reads fixed cell positions and the workbook's cached cell values; where the workbook's own lookup formulas are broken (#REF!, as in Rev6) those fields come through blank and the form's serial lookup fills them from the Data Source instead. Deliberately has no Express/HTTP dependency so it can be unit tested directly.
 
 ### `artifacts/api-server/src/lib/pdf.ts`
 Company-agnostic PDFKit drawing primitives: page/column layout constants, `fmtDate`/`fmtMoney`, and functions to draw table rows, headers, totals, the page footer, and the page header (logo + date + quote number box). Every function that renders text/borders takes color values as parameters instead of hardcoding them, so it can be reused by any `CompanyConfig`.
@@ -107,7 +116,7 @@ This monorepo's `lib/*` packages resolve via `"exports": { ".": "./src/index.ts"
 - `buildCommand: pnpm run build:vercel` builds the static frontend (`artifacts/quoting-tool/dist/public`, used as `outputDirectory`) and the API bundles via esbuild. `build:vercel` deliberately skips `pnpm run typecheck` so a type error can't block a deploy; typechecking still runs in the regular `pnpm run build`.
 - `artifacts/api-server/src/vercel.ts` re-exports the Express `app` without `.listen()`; `build.ts` bundles it to `dist/vercel.cjs` (plain CJS, `module.exports = app`).
 - `api/index.js` (repo root) is a one-line shim: `module.exports = require("../artifacts/api-server/dist/vercel.cjs")`. It exists because Vercel only builds Serverless Functions from files under a top-level `api/` directory — a `functions` entry in `vercel.json` pointing anywhere else is rejected with *"The pattern ... doesn't match any Serverless Functions inside the `api` directory"*. Vercel runs `buildCommand` before it traces `api/` functions, so the required `dist/vercel.cjs` exists by then. `@vercel/node` detects the export has `.listen` (i.e. it's an Express app) and passes it the raw Node request/response, so multer uploads and the streamed PDF response behave exactly as on a normal server.
-- `functions["api/index.js"].includeFiles: "artifacts/api-server/src/data/**"` ships `quoting_data.xlsx` and the logo. They keep their repo-relative paths inside the function and `process.cwd()` is the function root, so the `process.cwd()`-based lookups in `excelParser.ts` / `pdf.ts` resolve unchanged. `pdfkit`'s `.afm` font data is picked up automatically by Vercel's file tracer.
+- `functions["api/index.js"].includeFiles: "artifacts/api-server/src/data/**"` ships the logo. It keeps its repo-relative path inside the function and `process.cwd()` is the function root, so the `process.cwd()`-based lookup in `pdf.ts` resolves unchanged. The asset/pricing JSON is compiled into the bundle and needs no file inclusion. `pdfkit`'s `.afm` font data is picked up automatically by Vercel's file tracer.
 - `rewrites` send `/api/*` to the function (Vercel preserves the original URL, so `app.use("/api", router)` still matches) and everything else to `index.html` for the SPA router.
 - `artifacts/quoting-tool/vite.config.ts` only requires `PORT` for the dev/preview server and defaults `BASE_PATH` to `/`, so `vite build` runs on Vercel with no env vars set.
 
@@ -115,11 +124,12 @@ This monorepo's `lib/*` packages resolve via `"exports": { ".": "./src/index.ts"
 
 ## Known Limitations
 
-- **No automated tests.** Correctness currently relies on manual verification.
+- **Tests are server-side only.** `pnpm --filter @workspace/api-server test` (Node's built-in runner via `tsx`) covers the Cytek import, the data source provider, the lookup endpoints, the upload parser and — most importantly — golden-text regression tests for the generated PDFs (`src/routes/quotes.golden.test.ts`, fixtures in `src/routes/__fixtures__/`; regenerate deliberately with `UPDATE_GOLDEN=1`). The React form has no automated tests.
 - **No persistence.** Generated quotes are not saved anywhere; there is no quote history, audit log, or way to regenerate a past quote.
 - **Single active company per process.** `COMPANY_ID` is read once at module load — switching companies requires restarting both services, not a per-request/per-tenant decision. True multi-tenancy (e.g. resolving the company from the request's subdomain or an authenticated account) is not implemented.
 - **No authentication/authorization.** Any client that can reach the API can generate quotes or look up asset/pricing data.
-- **Excel data is cached in memory and read once per process.** Updating `quoting_data.xlsx` requires a server restart to take effect.
+- **One static Data Source.** Updating Cytek's data means re-running the import and redeploying; there is no upload-and-persist path yet, and no second company can be selected at runtime (the abstraction exists, the UI and storage do not).
+- **Rev6 lacks address/contact columns.** Facility code, address and contact for the 7,093 Rev6-only instruments are blank (facility defaults to the account name) until Cytek provides an export that includes them.
 - **Logo assets are duplicated by hand.** Each company needs its logo file placed in two locations (`api-server/src/data/` for the PDF, `quoting-tool/public/` for the UI) — there's no single asset pipeline.
 - **`lib/db` is unused scaffolding.** It builds and typechecks but nothing imports it; it's a placeholder for future persistence work, not active infrastructure.
 - **`artifacts/mockup-sandbox`** is a Replit-managed component preview/design tool declared in `.replit`. It is not part of the shipped product and has no `[services.production]` block — it exists purely to help iterate on UI components inside the Replit IDE.
@@ -131,4 +141,4 @@ This monorepo's `lib/*` packages resolve via `"exports": { ".": "./src/index.ts"
 3. **Authentication** — gate quote generation and catalog access behind login, scoped to a company/account.
 4. **Automated tests** — start with `fseUploadParser.ts` (pure functions, easy to unit test with fixture workbooks) and a snapshot/structural test of PDF generation (e.g. asserting page count and extracted text via `pdf-parse`).
 5. **Unify branding assets** — extend `CompanyConfig` to also drive the on-screen Tailwind theme and browser tab title, and consider a single logo upload that's copied to both consuming locations at build time instead of maintained by hand in two places.
-6. **Data refresh without restart** — add a way to reload `quoting_data.xlsx` (e.g. an admin endpoint or file-watch) instead of requiring a process restart.
+6. **Persistent, replaceable Data Sources** — an upload-once import (reusing `importCytek`) that stores normalized data outside the bundle (e.g. Postgres via `lib/db`), a default/selected source per company, and later a header-mapping step for non-Cytek workbooks.

@@ -1,11 +1,12 @@
 import { Router, type IRouter } from "express";
-import { getParts } from "../lib/excelParser.js";
+import { getDefaultDataSource } from "../data-sources/registry.js";
 
 const router: IRouter = Router();
 
+/** All priced products — parts and services — from the default data source. */
 router.get("/", (_req, res) => {
   try {
-    const parts = getParts();
+    const parts = getDefaultDataSource().listProducts();
     res.json({ parts });
   } catch (err) {
     console.error("Error fetching parts:", err);
