@@ -554,11 +554,31 @@ components:
         storeKind:
           type: string
           description: memory, file or postgres.
+        storage:
+          type: object
+          description: Names (never values) of the environment variables the server considered for its database, and any connection error.
+          properties:
+            selectedVar:
+              type: string
+              nullable: true
+            candidateVars:
+              type: array
+              items:
+                type: string
+            lookedFor:
+              type: array
+              items:
+                type: string
+            error:
+              type: string
+              nullable: true
+          required: [selectedVar, candidateVars, lookedFor, error]
       required:
         - dataSources
         - defaultId
         - persistent
         - storeKind
+        - storage
 
     AssetLookupResult:
       type: object

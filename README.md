@@ -115,12 +115,14 @@ Products the workbook has no usable list price for are imported and flagged; the
 
 Without a database the API keeps Data Sources in the memory of the server process. On Vercel that is worse than "lost on restart": each serverless function instance has its own memory, so a source uploaded through one instance is unknown to the others and lookups fail with "Unknown data source". The Data Sources page shows a yellow warning until a database is connected.
 
-**One-time setup on Vercel (about two minutes):**
+**One-time setup on Vercel:**
 
-1. Open the project in the Vercel dashboard → **Storage** → **Create Database** → choose **Neon** (Postgres) → accept the defaults and connect it to this project (all environments).
-2. Vercel adds the connection variables to the project automatically (`DATABASE_URL`, `POSTGRES_URL`, …). The app accepts any of them; nothing else to configure.
-3. **Redeploy** (Deployments → ⋯ on the latest → Redeploy) so the running functions pick the variables up.
-4. Open the app → Data Sources: the yellow warning is gone and the header says "Saved in Postgres · survives restarts and redeploys". Tables are created automatically on first use.
+1. Vercel dashboard → the project → **Storage** → **Create Database** → **Neon** (Postgres) → connect it to this project with **Production** (and Preview) selected.
+2. Vercel writes the connection variables into the project (`DATABASE_URL`, `POSTGRES_URL`, `DATABASE_URL_UNPOOLED`, …, or prefixed versions such as `STORAGE_DATABASE_URL` if a prefix was chosen; the app accepts all of these and the `PGHOST/PGUSER/PGPASSWORD/PGDATABASE` set). Confirm under **Settings → Environment Variables** that they exist for **Production**.
+3. **Redeploy.** Environment variables reach only deployments created after they were added: Deployments → ⋯ on the latest deployment → **Redeploy**. Connecting the database does not redeploy by itself.
+4. Open the app → Data Sources. The yellow warning is gone and the header says "Saved in Postgres · survives restarts and redeploys". Tables are created automatically on first use.
+
+If the warning is still there after a redeploy, it now says exactly which database-related variables the running deployment can see (names only). "No database variables at all" means the database is not connected to the environment you are looking at (or the deployment predates the connection); variables present but no `postgres://` URL means a value needs fixing. A connection failure (wrong password, TLS, unreachable host) is shown as a red "Database connection failed" box with the driver's message.
 
 Any other Postgres works the same way: set `DATABASE_URL` to its connection string (hosted databases are contacted over TLS automatically).
 

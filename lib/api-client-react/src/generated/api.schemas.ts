@@ -121,6 +121,16 @@ export interface QuoteProfileResult {
   missing: string[];
 }
 
+/**
+ * Names (never values) of the environment variables the server considered for its database, and any connection error.
+ */
+export type DataSourceListingStorage = {
+  selectedVar: string | null;
+  candidateVars: string[];
+  lookedFor: string[];
+  error: string | null;
+};
+
 export interface DataSourceListing {
   dataSources: DataSourceSummary[];
   /** null when no data source exists yet. */
@@ -129,6 +139,8 @@ export interface DataSourceListing {
   persistent: boolean;
   /** memory, file or postgres. */
   storeKind: string;
+  /** Names (never values) of the environment variables the server considered for its database, and any connection error. */
+  storage: DataSourceListingStorage;
 }
 
 export interface AssetLookupResult {
