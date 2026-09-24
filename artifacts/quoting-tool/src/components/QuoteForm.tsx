@@ -301,7 +301,7 @@ export function QuoteForm({ dataSourceId, sources, onSwitch }: QuoteFormProps) {
   };
 
   const InputLabel = ({ children, icon: Icon, required }: { children: React.ReactNode, icon?: any, required?: boolean }) => (
-    <label className="flex items-center text-sm font-semibold text-slate-700 mb-1.5">
+    <label className="flex items-center text-sm font-semibold text-secondary-foreground mb-1.5">
       {Icon && <Icon className="w-4 h-4 mr-2 text-primary/70" />}
       {children} {required && <span className="text-destructive ml-1">*</span>}
     </label>
@@ -311,8 +311,8 @@ export function QuoteForm({ dataSourceId, sources, onSwitch }: QuoteFormProps) {
     <form onSubmit={handleSubmit(onSubmit)} className="space-y-8 pb-20">
       
       {/* 1. CUSTOMER INFORMATION */}
-      <section className="bg-card rounded-2xl p-6 shadow-xl shadow-slate-200/50 border border-border">
-        <div className="flex items-center gap-3 mb-6 pb-4 border-b border-border/60">
+      <section className="bg-card rounded-2xl p-6 shadow-card border border-border">
+        <div className="flex flex-wrap items-center gap-3 mb-6 pb-4 border-b border-border/60">
           <div className="w-10 h-10 rounded-xl bg-primary/10 flex items-center justify-center text-primary">
             <User className="w-5 h-5" />
           </div>
@@ -336,7 +336,7 @@ export function QuoteForm({ dataSourceId, sources, onSwitch }: QuoteFormProps) {
                 ))}
               </select>
             ) : (
-              <span className="font-semibold text-slate-900">{dataSource?.name ?? dataSourceId}</span>
+              <span className="font-semibold text-foreground">{dataSource?.name ?? dataSourceId}</span>
             )}
             {dataSource && (
               <span className="hidden md:inline text-xs text-muted-foreground">
@@ -352,7 +352,7 @@ export function QuoteForm({ dataSourceId, sources, onSwitch }: QuoteFormProps) {
             <input 
               {...register("customerName")} 
               className={cn(
-                "w-full px-4 py-2.5 rounded-xl border bg-slate-50/50 focus:bg-white text-sm transition-all focus:outline-none focus:ring-2 focus:ring-primary/20",
+                "w-full px-4 py-2.5 rounded-xl border bg-surface focus:bg-card text-sm transition-all focus:outline-none focus:ring-2 focus:ring-primary/20",
                 errors.customerName ? "border-destructive focus:border-destructive" : "border-input focus:border-primary"
               )}
               placeholder="e.g. John Doe"
@@ -373,7 +373,7 @@ export function QuoteForm({ dataSourceId, sources, onSwitch }: QuoteFormProps) {
             />
             <ErrorMsg field="serialNumber" />
             {!serialHasCandidates && (
-              <p className="text-xs mt-1 text-amber-700">
+              <p className="text-xs mt-1 text-warning-foreground">
                 No asset with this serial in the {dataSource?.name ?? "current"} data. You can fill in the customer details manually.
               </p>
             )}
@@ -383,7 +383,7 @@ export function QuoteForm({ dataSourceId, sources, onSwitch }: QuoteFormProps) {
             <InputLabel icon={Building2}>Account Name</InputLabel>
             <input 
               {...register("accountName")} 
-              className="w-full px-4 py-2.5 rounded-xl border border-input bg-slate-50/50 focus:bg-white text-sm transition-all focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary"
+              className="w-full px-4 py-2.5 rounded-xl border border-input bg-surface focus:bg-card text-sm transition-all focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary"
             />
           </div>
 
@@ -391,7 +391,7 @@ export function QuoteForm({ dataSourceId, sources, onSwitch }: QuoteFormProps) {
             <InputLabel icon={Building2}>Facility Name</InputLabel>
             <input 
               {...register("facilityName")} 
-              className="w-full px-4 py-2.5 rounded-xl border border-input bg-slate-50/50 focus:bg-white text-sm transition-all focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary"
+              className="w-full px-4 py-2.5 rounded-xl border border-input bg-surface focus:bg-card text-sm transition-all focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary"
             />
           </div>
 
@@ -399,36 +399,36 @@ export function QuoteForm({ dataSourceId, sources, onSwitch }: QuoteFormProps) {
             <InputLabel icon={MapPin}>Address</InputLabel>
             <input 
               {...register("address")} 
-              className="w-full px-4 py-2.5 rounded-xl border border-input bg-slate-50/50 focus:bg-white text-sm transition-all focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary"
+              className="w-full px-4 py-2.5 rounded-xl border border-input bg-surface focus:bg-card text-sm transition-all focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary"
             />
           </div>
 
           {/* Read-only info badges from Asset Lookup */}
           <div className="md:col-span-2 grid grid-cols-1 sm:grid-cols-3 gap-4 pt-4">
-            <div className="bg-slate-50 border border-slate-100 rounded-xl p-4">
-              <span className="text-xs font-semibold text-slate-500 uppercase tracking-wider block mb-1">Contract Type</span>
-              <span className="text-sm font-medium text-slate-900">{watch("contractType") || "—"}</span>
+            <div className="bg-surface border border-border/60 rounded-xl p-4">
+              <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wider block mb-1">Contract Type</span>
+              <span className="text-sm font-medium text-foreground">{watch("contractType") || "—"}</span>
             </div>
-            <div className="bg-slate-50 border border-slate-100 rounded-xl p-4">
-              <span className="text-xs font-semibold text-slate-500 uppercase tracking-wider block mb-1">Status</span>
-              <span className="text-sm font-medium text-slate-900">
+            <div className="bg-surface border border-border/60 rounded-xl p-4">
+              <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wider block mb-1">Status</span>
+              <span className="text-sm font-medium text-foreground">
                 {watch("contractStatus") ? (
-                  <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-emerald-100 text-emerald-800">
+                  <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-success/15 text-success-foreground">
                     {watch("contractStatus")}
                   </span>
                 ) : "—"}
               </span>
             </div>
-            <div className="bg-slate-50 border border-slate-100 rounded-xl p-4">
-              <span className="text-xs font-semibold text-slate-500 uppercase tracking-wider block mb-1">Instrument</span>
-              <span className="text-sm font-medium text-slate-900">{watch("productName") || "—"}</span>
+            <div className="bg-surface border border-border/60 rounded-xl p-4">
+              <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wider block mb-1">Instrument</span>
+              <span className="text-sm font-medium text-foreground">{watch("productName") || "—"}</span>
             </div>
           </div>
         </div>
       </section>
 
       {/* 2. SERVICE QUOTE */}
-      <section className="bg-card rounded-2xl p-6 shadow-xl shadow-slate-200/50 border border-border">
+      <section className="bg-card rounded-2xl p-6 shadow-card border border-border">
         <div className="flex items-center gap-3 mb-6 pb-4 border-b border-border/60">
           <div className="w-10 h-10 rounded-xl bg-primary/10 flex items-center justify-center text-primary">
             <Settings2 className="w-5 h-5" />
@@ -457,7 +457,7 @@ export function QuoteForm({ dataSourceId, sources, onSwitch }: QuoteFormProps) {
               icon={<Settings2 className="w-4 h-4 text-muted-foreground" />}
             />
             {isUnpriced(watch("serviceType"), "", watch("servicePrice")) && (
-              <p className="text-xs mt-1 text-amber-700">
+              <p className="text-xs mt-1 text-warning-foreground">
                 No list price in the {dataSource?.name ?? "current"} data for this service. Enter a price.
               </p>
             )}
@@ -467,12 +467,12 @@ export function QuoteForm({ dataSourceId, sources, onSwitch }: QuoteFormProps) {
             <div className="col-span-1">
               <InputLabel>Service Price ($)</InputLabel>
               <div className="relative">
-                <span className="absolute left-3 top-2.5 text-slate-400 text-sm font-medium">$</span>
+                <span className="absolute left-3 top-2.5 text-muted-foreground text-sm font-medium">$</span>
                 <input 
                   type="number" 
                   step="0.01"
                   {...register("servicePrice")} 
-                  className="w-full pl-7 pr-2 py-2.5 rounded-xl border border-input bg-slate-50/50 focus:bg-white text-sm transition-all focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary"
+                  className="w-full pl-7 pr-2 py-2.5 rounded-xl border border-input bg-surface focus:bg-card text-sm transition-all focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary"
                 />
               </div>
               <ErrorMsg field="servicePrice" />
@@ -486,13 +486,13 @@ export function QuoteForm({ dataSourceId, sources, onSwitch }: QuoteFormProps) {
                 max="100"
                 placeholder="0"
                 {...register("serviceDiscountPercent")}
-                className="w-full px-3 py-2.5 rounded-xl border border-input bg-slate-50/50 focus:bg-white text-sm transition-all focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary"
+                className="w-full px-3 py-2.5 rounded-xl border border-input bg-surface focus:bg-card text-sm transition-all focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary"
               />
               <ErrorMsg field="serviceDiscountPercent" />
             </div>
             <div className="col-span-1">
               <InputLabel>Adjusted</InputLabel>
-              <div className="w-full px-3 py-2.5 rounded-xl border border-transparent bg-slate-100 text-sm font-medium text-slate-700" data-testid="service-adjusted">
+              <div className="w-full px-3 py-2.5 rounded-xl border border-transparent bg-surface-muted text-sm font-medium text-secondary-foreground" data-testid="service-adjusted">
                 {formatCurrency(servicePrice)}
               </div>
             </div>
@@ -501,7 +501,7 @@ export function QuoteForm({ dataSourceId, sources, onSwitch }: QuoteFormProps) {
       </section>
 
       {/* 3. PARTS QUOTE */}
-      <section className="bg-card rounded-2xl p-6 shadow-xl shadow-slate-200/50 border border-border">
+      <section className="bg-card rounded-2xl p-6 shadow-card border border-border">
         <div className="flex items-center justify-between mb-6 pb-4 border-b border-border/60">
           <div className="flex items-center gap-3">
             <div className="w-10 h-10 rounded-xl bg-primary/10 flex items-center justify-center text-primary">
@@ -523,10 +523,10 @@ export function QuoteForm({ dataSourceId, sources, onSwitch }: QuoteFormProps) {
 
         <div className="space-y-4">
           {fields.length === 0 && (
-            <div className="py-8 text-center flex flex-col items-center justify-center border-2 border-dashed border-slate-200 rounded-xl bg-slate-50/50">
-              <FileBox className="w-12 h-12 text-slate-300 mb-3" />
-              <h3 className="text-sm font-medium text-slate-600 mb-1">No parts added</h3>
-              <p className="text-xs text-slate-500 mb-4">Click "Add Part" to include components in this quote.</p>
+            <div className="py-8 text-center flex flex-col items-center justify-center border-2 border-dashed border-border rounded-xl bg-surface">
+              <FileBox className="w-12 h-12 text-muted-foreground/50 mb-3" />
+              <h3 className="text-sm font-medium text-muted-foreground mb-1">No parts added</h3>
+              <p className="text-xs text-muted-foreground mb-4">Click "Add Part" to include components in this quote.</p>
             </div>
           )}
 
@@ -546,7 +546,7 @@ export function QuoteForm({ dataSourceId, sources, onSwitch }: QuoteFormProps) {
                   animate={{ opacity: 1, height: "auto", scale: 1 }}
                   exit={{ opacity: 0, height: 0, scale: 0.95 }}
                   transition={{ duration: 0.2 }}
-                  className="grid grid-cols-1 lg:grid-cols-12 gap-4 items-start p-4 bg-slate-50 border border-slate-200 rounded-xl group relative overflow-hidden"
+                  className="grid grid-cols-1 lg:grid-cols-12 gap-4 items-start p-4 bg-surface border border-border rounded-xl group relative overflow-hidden"
                 >
                   <div className="lg:col-span-3">
                     <InputLabel required>Part Description</InputLabel>
@@ -567,7 +567,7 @@ export function QuoteForm({ dataSourceId, sources, onSwitch }: QuoteFormProps) {
                     />
                     <ErrorMsg field={`parts.${index}.description`} />
                     {unpriced && (
-                      <p className="text-xs mt-1 text-amber-700">
+                      <p className="text-xs mt-1 text-warning-foreground">
                         No list price in the {dataSource?.name ?? "current"} data for this item. Enter a price.
                       </p>
                     )}
@@ -577,7 +577,7 @@ export function QuoteForm({ dataSourceId, sources, onSwitch }: QuoteFormProps) {
                     <InputLabel>Part Number</InputLabel>
                     <input 
                       {...register(`parts.${index}.partNumber`)} 
-                      className="w-full px-3 py-2.5 rounded-lg border border-input bg-white text-sm focus:outline-none focus:border-primary focus:ring-1 focus:ring-primary"
+                      className="w-full px-3 py-2.5 rounded-lg border border-input bg-card text-sm focus:outline-none focus:border-primary focus:ring-1 focus:ring-primary"
                       placeholder="e.g. PN-123"
                     />
                   </div>
@@ -586,12 +586,12 @@ export function QuoteForm({ dataSourceId, sources, onSwitch }: QuoteFormProps) {
                     <div>
                       <InputLabel required>Unit Price</InputLabel>
                       <div className="relative">
-                        <span className="absolute left-2.5 top-2.5 text-slate-400 text-sm">$</span>
+                        <span className="absolute left-2.5 top-2.5 text-muted-foreground text-sm">$</span>
                         <input 
                           type="number" 
                           step="0.01"
                           {...register(`parts.${index}.unitPrice`)} 
-                          className="w-full pl-6 pr-2 py-2.5 rounded-lg border border-input bg-white text-sm focus:outline-none focus:border-primary focus:ring-1 focus:ring-primary"
+                          className="w-full pl-6 pr-2 py-2.5 rounded-lg border border-input bg-card text-sm focus:outline-none focus:border-primary focus:ring-1 focus:ring-primary"
                         />
                       </div>
                       <ErrorMsg field={`parts.${index}.unitPrice`} />
@@ -606,14 +606,14 @@ export function QuoteForm({ dataSourceId, sources, onSwitch }: QuoteFormProps) {
                         max="100"
                         placeholder="0"
                         {...register(`parts.${index}.discountPercent`)}
-                        className="w-full px-2 py-2.5 rounded-lg border border-input bg-white text-sm focus:outline-none focus:border-primary focus:ring-1 focus:ring-primary"
+                        className="w-full px-2 py-2.5 rounded-lg border border-input bg-card text-sm focus:outline-none focus:border-primary focus:ring-1 focus:ring-primary"
                       />
                       <ErrorMsg field={`parts.${index}.discountPercent`} />
                     </div>
 
                     <div>
                       <InputLabel>Adjusted</InputLabel>
-                      <div className="w-full px-2 py-2.5 rounded-lg bg-slate-100 text-sm font-medium text-slate-700 truncate" data-testid={`parts-${index}-adjusted`}>
+                      <div className="w-full px-2 py-2.5 rounded-lg bg-surface-muted text-sm font-medium text-secondary-foreground truncate" data-testid={`parts-${index}-adjusted`}>
                         {formatCurrency(adjusted)}
                       </div>
                     </div>
@@ -623,14 +623,14 @@ export function QuoteForm({ dataSourceId, sources, onSwitch }: QuoteFormProps) {
                       <input 
                         type="number" 
                         {...register(`parts.${index}.quantity`)} 
-                        className="w-full px-2 py-2.5 rounded-lg border border-input bg-white text-sm focus:outline-none focus:border-primary focus:ring-1 focus:ring-primary"
+                        className="w-full px-2 py-2.5 rounded-lg border border-input bg-card text-sm focus:outline-none focus:border-primary focus:ring-1 focus:ring-primary"
                       />
                       <ErrorMsg field={`parts.${index}.quantity`} />
                     </div>
 
                     <div>
                       <InputLabel>Line Total</InputLabel>
-                      <div className="w-full px-2 py-2.5 rounded-lg bg-white border border-slate-200 text-sm font-semibold text-slate-700 truncate" data-testid={`parts-${index}-total`}>
+                      <div className="w-full px-2 py-2.5 rounded-lg bg-card border border-border text-sm font-semibold text-secondary-foreground truncate" data-testid={`parts-${index}-total`}>
                         {formatCurrency(extPrice)}
                       </div>
                     </div>
@@ -640,7 +640,7 @@ export function QuoteForm({ dataSourceId, sources, onSwitch }: QuoteFormProps) {
                     <button
                       type="button"
                       onClick={() => remove(index)}
-                      className="p-2 text-slate-400 hover:text-destructive hover:bg-destructive/10 rounded-lg transition-colors"
+                      className="p-2 text-muted-foreground hover:text-destructive hover:bg-destructive/10 rounded-lg transition-colors"
                       title="Remove Part"
                     >
                       <Trash2 className="w-5 h-5" />
@@ -655,7 +655,7 @@ export function QuoteForm({ dataSourceId, sources, onSwitch }: QuoteFormProps) {
 
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-8">
         {/* 4. NOTES */}
-        <section className="lg:col-span-7 bg-card rounded-2xl p-6 shadow-xl shadow-slate-200/50 border border-border h-full">
+        <section className="lg:col-span-7 bg-card rounded-2xl p-6 shadow-card border border-border h-full">
           <div className="flex items-center gap-3 mb-4 pb-4 border-b border-border/60">
             <div className="w-10 h-10 rounded-xl bg-primary/10 flex items-center justify-center text-primary">
               <FileText className="w-5 h-5" />
@@ -665,46 +665,46 @@ export function QuoteForm({ dataSourceId, sources, onSwitch }: QuoteFormProps) {
           <textarea
             {...register("notes")}
             rows={5}
-            className="w-full p-4 rounded-xl border border-input bg-slate-50/50 focus:bg-white text-sm transition-all focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary resize-none"
+            className="w-full p-4 rounded-xl border border-input bg-surface focus:bg-card text-sm transition-all focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary resize-none"
             placeholder="Add any specific notes, terms, or conditions to include on the PDF quote..."
           />
         </section>
 
         {/* 5. TOTALS */}
-        <section className="lg:col-span-5 bg-slate-900 rounded-2xl p-1 shadow-xl shadow-slate-900/20 text-white relative overflow-hidden">
+        <section className="lg:col-span-5 bg-summary border border-border/60 rounded-2xl p-1 shadow-card text-summary-foreground relative overflow-hidden">
           {/* Decorative background element */}
           <div className="absolute top-0 right-0 -mt-10 -mr-10 w-40 h-40 bg-primary/30 rounded-full blur-3xl pointer-events-none"></div>
           
-          <div className="bg-slate-900/50 backdrop-blur-md rounded-[14px] p-6 h-full flex flex-col justify-between relative z-10">
+          <div className="bg-summary/50 backdrop-blur-md rounded-[14px] p-6 h-full flex flex-col justify-between relative z-10">
             <div>
               <div className="flex items-center gap-3 mb-6 pb-4 border-b border-white/10">
-                <Calculator className="w-5 h-5 text-primary-foreground" />
-                <h2 className="text-xl text-white">Summary</h2>
+                <Calculator className="w-5 h-5 text-summary-foreground" />
+                <h2 className="text-xl text-summary-foreground">Summary</h2>
               </div>
 
               <div className="space-y-4 mb-8">
-                <div className="flex justify-between items-center text-slate-300">
+                <div className="flex justify-between items-center text-summary-muted">
                   <span>Service Subtotal</span>
-                  <span className="font-medium text-white">{formatCurrency(servicePrice)}</span>
+                  <span className="font-medium text-summary-foreground">{formatCurrency(servicePrice)}</span>
                 </div>
-                <div className="flex justify-between items-center text-slate-300">
+                <div className="flex justify-between items-center text-summary-muted">
                   <span>Parts Subtotal</span>
-                  <span className="font-medium text-white">{formatCurrency(partsTotal)}</span>
+                  <span className="font-medium text-summary-foreground">{formatCurrency(partsTotal)}</span>
                 </div>
-                <div className="flex justify-between items-center text-slate-300 pt-2 border-t border-white/5">
+                <div className="flex justify-between items-center text-summary-muted pt-2 border-t border-white/5">
                   <span>Subtotal</span>
-                  <span className="font-medium text-white">{formatCurrency(subtotal)}</span>
+                  <span className="font-medium text-summary-foreground">{formatCurrency(subtotal)}</span>
                 </div>
                 
                 <div className="flex justify-between items-center">
-                  <span className="text-slate-300">Shipping & Handling</span>
+                  <span className="text-summary-muted">Shipping & Handling</span>
                   <div className="w-32 relative">
-                    <span className="absolute left-3 top-2 text-slate-400 text-sm font-medium">$</span>
+                    <span className="absolute left-3 top-2 text-summary-muted text-sm font-medium">$</span>
                     <input 
                       type="number" 
                       step="0.01"
                       {...register("shippingAndHandling")} 
-                      className="w-full pl-7 pr-3 py-1.5 rounded-lg border border-white/20 bg-white/5 text-white text-sm text-right focus:outline-none focus:border-primary focus:bg-white/10 transition-colors"
+                      className="w-full pl-7 pr-3 py-1.5 rounded-lg border border-white/20 bg-white/5 text-summary-foreground text-sm text-right focus:outline-none focus:border-primary focus:bg-white/10 transition-colors"
                     />
                   </div>
                 </div>
@@ -713,14 +713,14 @@ export function QuoteForm({ dataSourceId, sources, onSwitch }: QuoteFormProps) {
 
             <div>
               <div className="flex justify-between items-end pt-4 border-t border-white/10 mb-6">
-                <span className="text-lg text-slate-300">Total Quote</span>
-                <span className="text-4xl font-bold font-display text-white tracking-tight">
+                <span className="text-lg text-summary-muted">Total Quote</span>
+                <span className="text-4xl font-bold font-display text-summary-foreground tracking-tight">
                   {formatCurrency(total)}
                 </span>
               </div>
 
               {dataSource && !profileReady && (
-                <div className="mb-4 flex gap-2 items-start text-xs bg-amber-50 border border-amber-200 text-amber-900 rounded-lg p-3" data-testid="profile-incomplete">
+                <div className="mb-4 flex gap-2 items-start text-xs bg-warning/10 border border-warning/30 text-warning-foreground rounded-lg p-3" data-testid="profile-incomplete">
                   <AlertTriangle className="w-4 h-4 flex-shrink-0 mt-0.5" />
                   <div>
                     The Quote Profile for <strong>{dataSource.name}</strong> is incomplete (missing: {dataSource.quoteProfile.missing.join(", ")}), so documents cannot be generated yet.{" "}
@@ -731,7 +731,7 @@ export function QuoteForm({ dataSourceId, sources, onSwitch }: QuoteFormProps) {
               <button
                 type="submit"
                 disabled={generateMutation.isPending || !profileReady}
-                className="w-full py-4 rounded-xl font-bold text-lg bg-gradient-to-r from-primary to-blue-500 text-white shadow-lg shadow-primary/25 hover:shadow-xl hover:shadow-primary/40 hover:-translate-y-0.5 active:translate-y-0 transition-all duration-200 flex items-center justify-center disabled:opacity-70 disabled:cursor-not-allowed disabled:transform-none"
+                className="w-full py-4 rounded-xl font-bold text-lg bg-gradient-to-r from-primary to-primary-glow text-primary-foreground shadow-lg shadow-primary/25 hover:shadow-xl hover:shadow-primary/40 hover:-translate-y-0.5 active:translate-y-0 transition-all duration-200 flex items-center justify-center disabled:opacity-70 disabled:cursor-not-allowed disabled:transform-none"
               >
                 {generateMutation.isPending ? (
                   <>

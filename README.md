@@ -12,6 +12,7 @@ The application itself is seller-neutral. Each **Data Source** is one company's 
 - **Service + parts quoting** — mix a primary service line with any number of parts line items, each with an optional quote-specific discount %, with live adjusted price, line total, subtotal, shipping and total calculation.
 - **Branded PDF generation** — server-rendered PDF quote (customer block with instrument and serial number, list/net/extended price columns) plus a multi-page terms & conditions document, styled from the active company configuration (logo, colors, footer, legal text).
 - **Quote Profiles** — each Data Source has its own seller identity: company name, logo, address, contact info, notes under the line items, terms & conditions and PDF colors, edited in the app. Documents from a source are branded only by that source's profile; a source without a complete profile cannot generate documents.
+- **Light / Dark Mode** — a sun/moon toggle in the header switches the application theme. The choice is saved in the browser (`localStorage`); first-time visitors get their operating-system preference. The header shows the Evans logo variant made for each background. The theme styles the app only: generated PDFs are branded by the Data Source's Quote Profile and never change with it.
 
 ## Tech Stack
 

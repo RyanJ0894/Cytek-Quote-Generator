@@ -73,7 +73,7 @@ export function Autocomplete<T>({
       </div>
 
       {isOpen && !disabled && (
-        <div className="absolute z-50 w-full mt-1.5 bg-card border border-border rounded-xl shadow-lg shadow-black/5 overflow-hidden animate-in fade-in zoom-in-95 duration-100 max-h-64 flex flex-col">
+        <div className="absolute z-50 w-full mt-1.5 bg-card border border-border rounded-xl shadow-popover overflow-hidden animate-in fade-in zoom-in-95 duration-100 max-h-64 flex flex-col">
           <div className="overflow-y-auto overflow-x-hidden flex-1 p-1">
             {filteredItems.length === 0 ? (
               <div className="px-4 py-3 text-sm text-muted-foreground text-center">
@@ -89,7 +89,7 @@ export function Autocomplete<T>({
                     key={index}
                     className={cn(
                       "flex items-center justify-between px-3 py-2.5 text-sm rounded-lg cursor-pointer transition-colors",
-                      isSelected ? "bg-primary/10 text-primary font-medium" : "hover:bg-slate-100 text-foreground"
+                      isSelected ? "bg-primary/10 text-primary font-medium" : "hover:bg-muted text-foreground"
                     )}
                     onClick={() => {
                       onChange(display);

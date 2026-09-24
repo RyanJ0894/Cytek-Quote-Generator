@@ -2,6 +2,7 @@ import { Switch, Route, Router as WouterRouter } from "wouter";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { Toaster } from "@/components/ui/toaster";
 import { TooltipProvider } from "@/components/ui/tooltip";
+import { useThemeSync } from "@/hooks/use-theme";
 
 import Home from "./pages/home";
 import DataSourcesPage from "./pages/data-sources";
@@ -31,6 +32,7 @@ function Router() {
 }
 
 function App() {
+  useThemeSync();
   return (
     <QueryClientProvider client={queryClient}>
       <TooltipProvider>
