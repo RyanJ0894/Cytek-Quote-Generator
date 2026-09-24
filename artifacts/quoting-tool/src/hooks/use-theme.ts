@@ -4,10 +4,13 @@ export type Theme = "light" | "dark";
 
 /**
  * Where the choice is saved. The inline script in index.html reads the same
- * key before first paint so a returning Dark Mode user never sees a flash of
- * Light Mode. Keep the two in sync.
+ * key before first paint so a returning user never sees a flash of the wrong
+ * theme. Keep the two in sync.
  */
 export const THEME_STORAGE_KEY = "eqg-theme";
+
+/** Dark Mode is the default experience; only an explicit choice changes it. */
+export const DEFAULT_THEME: Theme = "dark";
 
 const listeners = new Set<() => void>();
 const notify = () => listeners.forEach((l) => l());
@@ -19,10 +22,6 @@ function readSaved(): Theme | null {
   } catch {
     return null;
   }
-}
-
-function systemTheme(): Theme {
-  return window.matchMedia?.("(prefers-color-scheme: dark)").matches ? "dark" : "light";
 }
 
 /** Apply a theme to the document (the `dark` class drives every token in index.css). */
@@ -46,16 +45,15 @@ function subscribe(listener: () => void) {
 /**
  * The application theme.
  *
- * Resolution order: the user's saved choice (localStorage), else the
- * operating-system / browser `prefers-color-scheme`. Once the user picks a
- * theme it is saved and respected on every later visit; until then the app
- * follows the OS setting, live.
+ * Resolution: the user's saved choice (localStorage), else Dark Mode. The
+ * operating-system preference is deliberately not consulted. Once the user
+ * picks Light or Dark it is saved and respected on every later visit.
  *
  * This is the application chrome only. Generated quote PDFs are branded by
  * each Data Source's Quote Profile and never see this setting.
  */
 export function useTheme() {
-  const theme = useSyncExternalStore(subscribe, current, () => "light" as Theme);
+  const theme = useSyncExternalStore(subscribe, current, () => DEFAULT_THEME);
 
   const setTheme = useCallback((next: Theme) => {
     apply(next);
@@ -73,37 +71,24 @@ export function useTheme() {
 }
 
 /**
- * Keeps the document in step with the OS while no preference is saved, and
- * with other tabs when one is. Mount once, at the app root.
+ * Keeps the document in step with the saved choice: applies it if the inline
+ * script did not run (e.g. tests rendering the app alone) and follows changes
+ * made in other tabs. Mount once, at the app root.
  */
 export function useThemeSync() {
   useEffect(() => {
-    // The inline script already applied the right theme; this is a safety net
-    // for environments where it did not run (e.g. tests rendering the app alone).
-    if (!document.documentElement.classList.contains("dark") && readSaved() === null && systemTheme() === "dark") {
-      apply("dark");
+    const wanted = readSaved() ?? DEFAULT_THEME;
+    if (current() !== wanted) {
+      apply(wanted);
       notify();
     }
 
-    const media = window.matchMedia?.("(prefers-color-scheme: dark)");
-    const onSystemChange = () => {
-      if (readSaved() === null) {
-        apply(systemTheme());
-        notify();
-      }
-    };
-    media?.addEventListener?.("change", onSystemChange);
-
     const onStorage = (e: StorageEvent) => {
       if (e.key !== THEME_STORAGE_KEY) return;
-      apply(readSaved() ?? systemTheme());
+      apply(readSaved() ?? DEFAULT_THEME);
       notify();
     };
     window.addEventListener("storage", onStorage);
-
-    return () => {
-      media?.removeEventListener?.("change", onSystemChange);
-      window.removeEventListener("storage", onStorage);
-    };
+    return () => window.removeEventListener("storage", onStorage);
   }, []);
 }
