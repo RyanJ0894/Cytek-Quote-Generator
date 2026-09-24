@@ -3,7 +3,7 @@ import { Link, useLocation, useParams } from "wouter";
 import { ArrowLeft, Loader2, Building2, ImagePlus, Trash2 } from "lucide-react";
 import { useQueryClient } from "@tanstack/react-query";
 import { useListDataSources, getListDataSourcesQueryKey, type QuoteProfile } from "@workspace/api-client-react";
-import { AppHeader, PageShell } from "@/components/AppHeader";
+import { AppHeader, HeaderLink, PageShell } from "@/components/AppHeader";
 import { useToast } from "@/hooks/use-toast";
 
 const BASE_URL = import.meta.env.BASE_URL?.replace(/\/$/, "") ?? "";
@@ -32,8 +32,8 @@ function textToSections(text: string): QuoteProfile["termsAndConditions"]["secti
   return out.map((s) => ({ heading: s.heading, body: s.body.trim() })).filter((s) => s.heading || s.body);
 }
 
-const input = "w-full px-3 py-2 rounded-xl border border-input bg-slate-50/50 focus:bg-white text-sm focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary";
-const label = "block text-sm font-semibold text-slate-700 mb-1";
+const input = "w-full px-3 py-2 rounded-xl border border-input bg-surface focus:bg-card text-sm focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary";
+const label = "block text-sm font-semibold text-secondary-foreground mb-1";
 
 /** Edit the seller identity and document branding for one Data Source. */
 export default function QuoteProfilePage() {
@@ -128,18 +128,16 @@ export default function QuoteProfilePage() {
   return (
     <PageShell>
       <AppHeader>
-        <Link href="/data-sources" className="flex items-center gap-2 px-4 py-2 text-sm font-medium text-slate-600 hover:text-slate-900 hover:bg-slate-100 rounded-lg transition-colors">
-          <ArrowLeft className="w-4 h-4" /> Data Sources
-        </Link>
+        <HeaderLink href="/data-sources"><ArrowLeft className="w-4 h-4" /> Data Sources</HeaderLink>
       </AppHeader>
 
       <main className="max-w-3xl mx-auto px-4 sm:px-6 lg:px-8 py-10">
         <div className="mb-6">
-          <h2 className="text-3xl font-bold text-slate-900 font-display mb-2">Quote Profile</h2>
-          <p className="text-slate-500">
+          <h2 className="text-3xl font-bold text-foreground font-display mb-2">Quote Profile</h2>
+          <p className="text-muted-foreground">
             Seller identity and document branding for <strong>{source?.name ?? id}</strong>. Used on every quote generated from this source and nowhere else.
           </p>
-          {missing.length > 0 && <p className="text-sm text-amber-700 mt-2">Required before documents can be generated: {missing.join(", ")}.</p>}
+          {missing.length > 0 && <p className="text-sm text-warning-foreground mt-2">Required before documents can be generated: {missing.join(", ")}.</p>}
         </div>
 
         {loadError && <div className="bg-destructive/5 border border-destructive/30 text-destructive rounded-2xl p-6 text-sm">{loadError}</div>}
@@ -147,8 +145,8 @@ export default function QuoteProfilePage() {
 
         {profile && (
           <form onSubmit={onSave} className="space-y-6" data-testid="quote-profile-form">
-            <section className="bg-card rounded-2xl border border-border shadow-xl shadow-slate-200/50 p-6 space-y-4">
-              <h3 className="text-lg font-bold text-slate-900">Company</h3>
+            <section className="bg-card rounded-2xl border border-border shadow-card p-6 space-y-4">
+              <h3 className="text-lg font-bold text-foreground">Company</h3>
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div><label className={label}>Company name (on the document) *</label><input name="companyName" className={input} value={profile.companyName} onChange={(e) => set({ companyName: e.target.value })} placeholder="Evans Medical LLC" /></div>
                 <div><label className={label}>Short name</label><input name="shortName" className={input} value={profile.shortName} onChange={(e) => set({ shortName: e.target.value })} placeholder="Evans Medical" /></div>
@@ -162,21 +160,22 @@ export default function QuoteProfilePage() {
 
               <div>
                 <label className={label}>Logo (PNG or JPEG, printed top-left; the short name is printed instead when empty)</label>
+                {/* The logo is a document asset: previewed on white, as it prints, regardless of the app theme. */}
                 <div className="flex items-center gap-4">
                   {profile.logo ? (
                     <img src={profile.logo.dataUrl} alt="Logo preview" className="h-12 max-w-[200px] object-contain border border-border rounded-lg bg-white p-1" data-testid="logo-preview" />
                   ) : (
-                    <div className="h-12 w-12 rounded-lg bg-slate-100 flex items-center justify-center text-slate-400"><Building2 className="w-5 h-5" /></div>
+                    <div className="h-12 w-12 rounded-lg bg-muted flex items-center justify-center text-muted-foreground"><Building2 className="w-5 h-5" /></div>
                   )}
                   <input ref={logoInput} type="file" accept="image/png,image/jpeg" className="hidden" onChange={(e) => onLogoFile(e.target.files?.[0])} />
-                  <button type="button" onClick={() => logoInput.current?.click()} className="inline-flex items-center gap-1 px-3 py-1.5 text-xs font-semibold rounded-lg border border-border text-slate-700 hover:bg-slate-50"><ImagePlus className="w-3.5 h-3.5" /> {profile.logo ? "Replace logo" : "Upload logo"}</button>
-                  {profile.logo && <button type="button" onClick={() => set({ logo: null })} className="inline-flex items-center gap-1 px-3 py-1.5 text-xs font-semibold rounded-lg text-slate-500 hover:text-destructive"><Trash2 className="w-3.5 h-3.5" /> Remove</button>}
+                  <button type="button" onClick={() => logoInput.current?.click()} className="inline-flex items-center gap-1 px-3 py-1.5 text-xs font-semibold rounded-lg border border-border text-secondary-foreground hover:bg-muted/60"><ImagePlus className="w-3.5 h-3.5" /> {profile.logo ? "Replace logo" : "Upload logo"}</button>
+                  {profile.logo && <button type="button" onClick={() => set({ logo: null })} className="inline-flex items-center gap-1 px-3 py-1.5 text-xs font-semibold rounded-lg text-muted-foreground hover:text-destructive"><Trash2 className="w-3.5 h-3.5" /> Remove</button>}
                 </div>
               </div>
             </section>
 
-            <section className="bg-card rounded-2xl border border-border shadow-xl shadow-slate-200/50 p-6 space-y-4">
-              <h3 className="text-lg font-bold text-slate-900">Document text</h3>
+            <section className="bg-card rounded-2xl border border-border shadow-card p-6 space-y-4">
+              <h3 className="text-lg font-bold text-foreground">Document text</h3>
               <div>
                 <label className={label}>Notes under the line items (one per line)</label>
                 <textarea name="quoteBullets" rows={4} className={input} value={bulletsText} onChange={(e) => setBulletsText(e.target.value)} placeholder={"-All prices in USD\n-This quote is valid for 60 days."} />
@@ -197,17 +196,17 @@ export default function QuoteProfilePage() {
                 {(["tableHeaderBackground", "textColor", "borderColor"] as const).map((k) => (
                   <div key={k}>
                     <label className={label}>{k === "tableHeaderBackground" ? "Table header" : k === "textColor" ? "Text" : "Borders"}</label>
-                    <input type="color" name={k} value={profile.pdfTheme[k]} onChange={(e) => set({ pdfTheme: { ...profile.pdfTheme, [k]: e.target.value } })} className="h-9 w-full rounded-lg border border-input bg-white" />
+                    <input type="color" name={k} value={profile.pdfTheme[k]} onChange={(e) => set({ pdfTheme: { ...profile.pdfTheme, [k]: e.target.value } })} className="h-9 w-full rounded-lg border border-input bg-card" />
                   </div>
                 ))}
               </div>
             </section>
 
             <div className="flex items-center gap-3">
-              <button type="submit" disabled={saving} className="inline-flex items-center gap-2 py-2.5 px-6 rounded-xl font-bold text-sm bg-gradient-to-r from-primary to-blue-500 text-white shadow-lg shadow-primary/25 hover:shadow-xl transition-all disabled:opacity-70">
+              <button type="submit" disabled={saving} className="inline-flex items-center gap-2 py-2.5 px-6 rounded-xl font-bold text-sm bg-gradient-to-r from-primary to-primary-glow text-primary-foreground shadow-lg shadow-primary/25 hover:shadow-xl transition-all disabled:opacity-70">
                 {saving ? <><Loader2 className="w-4 h-4 animate-spin" /> Saving…</> : "Save Quote Profile"}
               </button>
-              <Link href="/data-sources" className="text-sm text-slate-600 hover:text-slate-900">Cancel</Link>
+              <Link href="/data-sources" className="text-sm text-muted-foreground hover:text-foreground">Cancel</Link>
             </div>
           </form>
         )}

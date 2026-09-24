@@ -32,15 +32,15 @@ export default function Home() {
 
         {data && sources.length === 0 && (
           <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} className="max-w-xl mx-auto text-center">
-            <div className="bg-card rounded-2xl border border-border shadow-xl shadow-slate-200/50 p-10">
+            <div className="bg-card rounded-2xl border border-border shadow-card p-10">
               <div className="w-16 h-16 mx-auto rounded-2xl bg-primary/10 flex items-center justify-center text-primary mb-5">
                 <Database className="w-8 h-8" />
               </div>
-              <h2 className="text-2xl font-bold text-slate-900 font-display mb-2">No Data Sources Yet</h2>
-              <p className="text-slate-500 mb-6">Add your first Source of Truth to start creating quotes. Upload the workbook once; quotes never need it again.</p>
+              <h2 className="text-2xl font-bold text-foreground font-display mb-2">No Data Sources Yet</h2>
+              <p className="text-muted-foreground mb-6">Add your first Source of Truth to start creating quotes. Upload the workbook once; quotes never need it again.</p>
               <Link
                 href="/data-sources"
-                className="inline-flex items-center gap-2 py-3 px-6 rounded-xl font-bold text-sm bg-gradient-to-r from-primary to-blue-500 text-white shadow-lg shadow-primary/25 hover:shadow-xl hover:-translate-y-0.5 transition-all"
+                className="inline-flex items-center gap-2 py-3 px-6 rounded-xl font-bold text-sm bg-gradient-to-r from-primary to-primary-glow text-primary-foreground shadow-lg shadow-primary/25 hover:shadow-xl hover:-translate-y-0.5 transition-all"
               >
                 <PlusCircle className="w-4 h-4" /> Add Data Source
               </Link>
@@ -51,8 +51,8 @@ export default function Home() {
         {data && sources.length > 0 && (
           <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }}>
             <div className="text-center mb-8">
-              <h2 className="text-3xl font-bold text-slate-900 font-display mb-2">Create a Quote</h2>
-              <p className="text-slate-500">Select the Data Source you want to use.</p>
+              <h2 className="text-3xl font-bold text-foreground font-display mb-2">Create a Quote</h2>
+              <p className="text-muted-foreground">Select the Data Source you want to use.</p>
             </div>
 
             <ul className="grid grid-cols-1 gap-4 max-w-2xl mx-auto" data-testid="source-picker">
@@ -60,7 +60,7 @@ export default function Home() {
                 <li key={ds.id}>
                   <Link
                     href={`/quote/${encodeURIComponent(ds.id)}`}
-                    className="group flex items-center gap-4 bg-card rounded-2xl border border-border shadow-lg shadow-slate-200/50 px-6 py-5 hover:border-primary/50 hover:shadow-xl hover:-translate-y-0.5 transition-all"
+                    className="group flex items-center gap-4 bg-card rounded-2xl border border-border shadow-card-sm px-6 py-5 hover:border-primary/50 hover:shadow-card hover:-translate-y-0.5 transition-all"
                     data-testid={`pick-${ds.id}`}
                   >
                     <div className="w-12 h-12 rounded-xl bg-primary/10 flex items-center justify-center text-primary flex-shrink-0">
@@ -68,14 +68,14 @@ export default function Home() {
                     </div>
                     <div className="flex-1 min-w-0">
                       <div className="flex items-center gap-2 flex-wrap">
-                        <span className="text-lg font-bold text-slate-900">{ds.name}</span>
+                        <span className="text-lg font-bold text-foreground">{ds.name}</span>
                         {ds.isDefault && (
-                          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-semibold bg-emerald-100 text-emerald-800">
+                          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-semibold bg-success/15 text-success-foreground">
                             <Star className="w-3 h-3" /> Default
                           </span>
                         )}
                         {!ds.quoteProfile.complete && (
-                          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-semibold bg-amber-100 text-amber-800" title={`Missing: ${ds.quoteProfile.missing.join(", ")}`}>
+                          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-semibold bg-warning/15 text-warning-foreground" title={`Missing: ${ds.quoteProfile.missing.join(", ")}`}>
                             <AlertTriangle className="w-3 h-3" /> Quote Profile incomplete
                           </span>
                         )}
@@ -85,14 +85,14 @@ export default function Home() {
                         {ds.assetCount.toLocaleString()} assets · {ds.productCount.toLocaleString()} products · updated {new Date(ds.updatedAt).toLocaleDateString()}
                       </p>
                     </div>
-                    <ChevronRight className="w-5 h-5 text-slate-400 group-hover:text-primary transition-colors flex-shrink-0" />
+                    <ChevronRight className="w-5 h-5 text-muted-foreground group-hover:text-primary transition-colors flex-shrink-0" />
                   </Link>
                 </li>
               ))}
             </ul>
 
             <p className="text-center text-xs text-muted-foreground mt-8">
-              Need to add or update a source? Use <Link href="/data-sources" className="underline underline-offset-2 hover:text-slate-700">Data Sources</Link>.
+              Need to add or update a source? Use <Link href="/data-sources" className="underline underline-offset-2 hover:text-foreground">Data Sources</Link>.
             </p>
           </motion.div>
         )}
