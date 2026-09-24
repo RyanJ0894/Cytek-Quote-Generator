@@ -111,7 +111,18 @@ Each Data Source is one persistent, isolated dataset normalized from a workbook 
 
 Products the workbook has no usable list price for are imported and flagged; they appear in search marked "no list price" and the form asks for a price. Prices are never invented.
 
-### Persistence (`DATABASE_URL`)
+### Persistence (`DATABASE_URL`) — required in production
+
+Without a database the API keeps Data Sources in the memory of the server process. On Vercel that is worse than "lost on restart": each serverless function instance has its own memory, so a source uploaded through one instance is unknown to the others and lookups fail with "Unknown data source". The Data Sources page shows a yellow warning until a database is connected.
+
+**One-time setup on Vercel (about two minutes):**
+
+1. Open the project in the Vercel dashboard → **Storage** → **Create Database** → choose **Neon** (Postgres) → accept the defaults and connect it to this project (all environments).
+2. Vercel adds the connection variables to the project automatically (`DATABASE_URL`, `POSTGRES_URL`, …). The app accepts any of them; nothing else to configure.
+3. **Redeploy** (Deployments → ⋯ on the latest → Redeploy) so the running functions pick the variables up.
+4. Open the app → Data Sources: the yellow warning is gone and the header says "Saved in Postgres · survives restarts and redeploys". Tables are created automatically on first use.
+
+Any other Postgres works the same way: set `DATABASE_URL` to its connection string (hosted databases are contacted over TLS automatically).
 
 Sources are stored in Postgres when `DATABASE_URL` is set (tables are created automatically on first use). Locally, `DATA_SOURCES_DIR=<folder>` stores them as JSON files instead. With neither, the app still runs (the seed is re-created on every start) but anything added or changed is lost on restart, and the Data Sources page says so. On Vercel, add a Postgres database (Marketplace → Neon, or any Postgres) and set `DATABASE_URL` in the project's environment variables, then redeploy.
 

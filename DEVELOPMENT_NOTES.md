@@ -64,6 +64,10 @@ The main form. Owns client-side validation (Zod + React Hook Form), live total c
 ### `artifacts/quoting-tool/src/pages/`
 `home.tsx` (source picker / onboarding), `quote.tsx` (Manual Quote for `/quote/:id`; remounts `QuoteForm` keyed by source id so switching sources restarts the quote) and `data-sources.tsx` (management). `components/AppHeader.tsx` is the shared header. The former per-quote "FSE Input" upload UI was removed from the quoting path; its server endpoint (`POST /api/quotes/parse-upload`, `lib/fseUploadParser.ts`) remains, unused by the UI.
 
+## Persistence and serverless
+
+`createStoreFromEnv` (`data-sources/service.ts`) picks Postgres when any of `DATABASE_URL`, `POSTGRES_URL`, `DATABASE_URL_UNPOOLED`, `POSTGRES_PRISMA_URL`, `POSTGRES_URL_NON_POOLING` or `NEON_DATABASE_URL` is set (the names Vercel's Postgres integrations write), else the file store when `DATA_SOURCES_DIR` is set, else memory. `pgPoolConfig` adds TLS for non-local hosts that do not already carry `sslmode`, and keeps pools small (`max: 3`) because every function instance opens its own. The memory store on Vercel is not merely volatile: instances do not share it, so an uploaded source can be visible to one request and "Unknown data source" to the next. The Quote Form now shows such lookup errors under the Serial field instead of silently leaving the form empty; the Data Sources page explains the situation while no database is connected and names the backend once one is.
+
 ## Serial-driven population
 
 Selecting a serial looks the asset up in the active source only and fills every field the record supplies: Customer Name (from the asset contact, only when the field is empty or still holds the previous auto-fill), Account, Facility, Address, Contract Type, Status (derived from the contract end date), Instrument. Blank source values leave blank fields. `QuoteForm` remembers what it auto-filled: when the serial changes or is cleared, fields still holding those values are replaced/cleared and anything the user typed over them is kept. Switching Data Source mid-quote asks for confirmation and remounts the form empty.

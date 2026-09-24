@@ -76,7 +76,11 @@ export default function DataSourcesPage() {
             <AlertTriangle className="w-5 h-5 flex-shrink-0 mt-0.5" />
             <div>
               <p className="font-semibold">Persistent storage is not configured on this server.</p>
-              <p>Data sources you add or change here will be lost when the server restarts (the shipped Cytek — Current source is re-created). Ask your administrator to set <code>DATABASE_URL</code> to enable saving.</p>
+              <p>
+                Data sources you add or change here live only in the memory of the server process that received them: they are lost when it restarts, and on serverless hosting
+                other instances will not see them at all (lookups can fail with "Unknown data source" a moment after an import). The shipped Cytek — Current source is re-created each time.
+                Connect a Postgres database and set <code>DATABASE_URL</code> (see the README) to enable saving.
+              </p>
             </div>
           </div>
         )}
@@ -85,6 +89,11 @@ export default function DataSourcesPage() {
           <div className="px-6 py-4 border-b border-border/60 flex items-center gap-3">
             <div className="w-9 h-9 rounded-xl bg-primary/10 flex items-center justify-center text-primary"><Database className="w-5 h-5" /></div>
             <h3 className="text-lg font-bold text-foreground">Configured sources</h3>
+            {data?.persistent && (
+              <span className="ml-auto text-xs text-muted-foreground" data-testid="storage-kind" title="Where Data Sources and Quote Profiles are saved">
+                Saved in {data.storeKind === "postgres" ? "Postgres" : data.storeKind === "file" ? "server files" : data.storeKind} · survives restarts and redeploys
+              </span>
+            )}
           </div>
           {isLoading && <div className="p-6 text-sm text-muted-foreground flex items-center gap-2"><Loader2 className="w-4 h-4 animate-spin" /> Loading…</div>}
           {error && <div className="p-6 text-sm text-destructive">Could not load data sources.</div>}

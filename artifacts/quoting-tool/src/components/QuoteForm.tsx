@@ -147,7 +147,7 @@ export function QuoteForm({ dataSourceId, sources, onSwitch }: QuoteFormProps) {
   
   // Conditionally fetch asset data when a serial number is provided
   const lookupParams = { serial: serialNumber, ...dsParams };
-  const { data: assetData, isFetching: isFetchingAsset } = useLookupAsset(
+  const { data: assetData, isFetching: isFetchingAsset, error: assetError } = useLookupAsset(
     lookupParams,
     {
       query: {
@@ -187,6 +187,17 @@ export function QuoteForm({ dataSourceId, sources, onSwitch }: QuoteFormProps) {
   };
   const productSecondary = (item: PartItem) =>
     `${item.partNumber || ""}${item.category === "Instrument" ? " · instrument" : ""}${item.priced === false ? " · no list price" : ""}`.trim();
+
+  // A lookup error other than "no asset with that serial" (e.g. the data
+  // source is unknown to the server instance that answered, which happens on
+  // serverless hosting without persistent storage) is shown, not swallowed.
+  const lookupProblem = useMemo(() => {
+    const e = assetError as { status?: number; data?: { error?: string }; message?: string } | null;
+    if (!e) return "";
+    const msg = e.data?.error || e.message || "";
+    if (e.status === 404 && /No asset found/i.test(msg)) return "";
+    return msg || "The serial lookup failed.";
+  }, [assetError]);
 
   // Serial-not-found hint: shown once the typed value can no longer match any
   // serial in the data source (so it does not flash while typing a prefix).
@@ -403,6 +414,11 @@ export function QuoteForm({ dataSourceId, sources, onSwitch }: QuoteFormProps) {
               icon={isFetchingAsset ? <Loader2 className="w-4 h-4 animate-spin text-primary" /> : <Search className="w-4 h-4 text-muted-foreground" />}
             />
             <ErrorMsg field="serialNumber" />
+            {lookupProblem && (
+              <p className="text-xs mt-1 text-destructive" role="alert" data-testid="lookup-problem">
+                Could not look this serial up: {lookupProblem}
+              </p>
+            )}
             {!serialHasCandidates && (
               <p className="text-xs mt-1 text-warning-foreground">
                 No asset with this serial in the {dataSource?.name ?? "current"} data. You can fill in the customer details manually.

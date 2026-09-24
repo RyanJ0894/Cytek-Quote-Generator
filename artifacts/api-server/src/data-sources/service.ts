@@ -282,13 +282,54 @@ export class DataSourceService {
   }
 }
 
+/**
+ * Connection-string variables, in order of preference. `DATABASE_URL` is the
+ * documented one; the others are what Vercel's Postgres integrations (Neon,
+ * Supabase, the legacy Vercel Postgres) set automatically, so connecting a
+ * database in the Vercel dashboard is enough.
+ */
+const DATABASE_URL_VARS = ["DATABASE_URL", "POSTGRES_URL", "DATABASE_URL_UNPOOLED", "POSTGRES_PRISMA_URL", "POSTGRES_URL_NON_POOLING", "NEON_DATABASE_URL"];
+
+export function databaseUrlFromEnv(env: NodeJS.ProcessEnv = process.env): { name: string; url: string } | null {
+  for (const name of DATABASE_URL_VARS) {
+    const url = env[name]?.trim();
+    if (url) return { name, url };
+  }
+  return null;
+}
+
+/** Hosted Postgres requires TLS; local databases usually do not offer it. */
+export function pgPoolConfig(url: string): pg.PoolConfig {
+  let host = "";
+  let hasSslMode = false;
+  try {
+    const u = new URL(url);
+    host = u.hostname;
+    hasSslMode = u.searchParams.has("sslmode") || u.searchParams.has("ssl");
+  } catch {
+    /* pg will report the malformed URL */
+  }
+  const local = host === "localhost" || host === "127.0.0.1" || host === "::1" || host === "";
+  return {
+    connectionString: url,
+    ...(local || hasSslMode ? {} : { ssl: { rejectUnauthorized: true } }),
+    // Serverless: many short-lived function instances share the database, so keep each pool small.
+    max: 3,
+    idleTimeoutMillis: 10_000,
+    connectionTimeoutMillis: 10_000,
+  };
+}
+
 function createStoreFromEnv(): DataSourceStore {
-  const url = process.env["DATABASE_URL"];
-  if (url) return new PgDataSourceStore(new pg.Pool({ connectionString: url }));
+  const db = databaseUrlFromEnv();
+  if (db) {
+    console.info(`[data-sources] Using Postgres from ${db.name} (persistent).`);
+    return new PgDataSourceStore(new pg.Pool(pgPoolConfig(db.url)));
+  }
   const dir = process.env["DATA_SOURCES_DIR"];
   if (dir) return new FileDataSourceStore(dir);
   console.warn(
-    "[data-sources] No DATABASE_URL or DATA_SOURCES_DIR configured: data sources you add will not persist across restarts (the seeded Cytek source is re-created on every start).",
+    "[data-sources] No DATABASE_URL (or POSTGRES_URL) and no DATA_SOURCES_DIR configured: data sources you add live only in this process's memory. They are lost on restart, and on serverless hosting (Vercel) other function instances will not see them at all. Connect a Postgres database and set DATABASE_URL.",
   );
   return new MemoryDataSourceStore();
 }
