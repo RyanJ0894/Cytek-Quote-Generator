@@ -48,11 +48,27 @@ Company-agnostic PDFKit drawing primitives: page/column layout constants, `fmtDa
 ### `artifacts/api-server/src/routes/quotes.ts`
 The business logic and route handler for `POST /api/quotes/generate`. Reads the active `CompanyConfig`, assembles line items and totals from the request body, and calls into `lib/pdf.ts` to render the two-part document (quote page(s) + terms & conditions pages). This file intentionally does not know how to draw anything — it only knows what to draw and in what order.
 
+### `artifacts/api-server/src/data-sources/workbook-importer.ts` — any properly laid-out workbook
+
+Columns are matched by normalized header (lower-case, punctuation collapsed) against alias lists per field, so "Serial #", "serial_number" and "Serial Number" are the same column; an alias written `~serial` matches any header containing that text and is tried last. Separate State + Zip columns are combined into `stateZip`. Only a serial column and an account/customer column are required for assets; only a name and a price for pricing rows.
+
+Pricing rows are classified by `classifyProduct` into `Service` (Service Type control: labor, support, service contracts, warranties), `Parts` and `Instrument` (both are line items in Parts Configuration): an explicit Category/Type column wins; then time/visit sale units are services; then, for catalogs whose item-id column is populated (Cytek), priced rows without an id are ad-hoc services and everything else is a part (the original rule, unchanged for Cytek); otherwise the name decides, with physical-item nouns (bracket, filter, kit, …) outranking service/instrument words. The manifest's `fieldMappings.products.category` records which rule applied. Cytek's bundled `products.json` is unaffected.
+
+### `artifacts/quoting-tool/src/components/Autocomplete.tsx` — Source-driven selectors
+
+Serial Number, Service Type and Part Description use this combobox. The committed `value` and the filter text are separate state: opening the list shows every record of the active source (selected one highlighted), typing narrows it, selecting commits and resets the filter, so reopening never shows just the selected entry. The × button clears the value and calls `onClear` (the form resets the dependent price/part number). Keyboard: arrows, Enter, Escape.
+
 ### `artifacts/quoting-tool/src/components/QuoteForm.tsx`
 The main form. Owns client-side validation (Zod + React Hook Form), live total calculation, serial-number-triggered asset lookup, and submission to `POST /api/quotes/generate` (downloading the returned PDF blob).
 
 ### `artifacts/quoting-tool/src/pages/`
 `home.tsx` (source picker / onboarding), `quote.tsx` (Manual Quote for `/quote/:id`; remounts `QuoteForm` keyed by source id so switching sources restarts the quote) and `data-sources.tsx` (management). `components/AppHeader.tsx` is the shared header. The former per-quote "FSE Input" upload UI was removed from the quoting path; its server endpoint (`POST /api/quotes/parse-upload`, `lib/fseUploadParser.ts`) remains, unused by the UI.
+
+## Serial-driven population
+
+Selecting a serial looks the asset up in the active source only and fills every field the record supplies: Customer Name (from the asset contact, only when the field is empty or still holds the previous auto-fill), Account, Facility, Address, Contract Type, Status (derived from the contract end date), Instrument. Blank source values leave blank fields. `QuoteForm` remembers what it auto-filled: when the serial changes or is cleared, fields still holding those values are replaced/cleared and anything the user typed over them is kept. Switching Data Source mid-quote asks for confirmation and remounts the form empty.
+
+The legacy work-type labels ("On-Site Support (1 day)", "PM Service", "Remote Support") are appended to Service Type for the seeded `cytek` source only; every other source lists its own catalog only.
 
 ## Quote Profiles (seller identity per Data Source)
 

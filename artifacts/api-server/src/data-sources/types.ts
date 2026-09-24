@@ -48,7 +48,13 @@ export interface NormalizedAsset {
 /** What a lookup returns: the stored record plus the status derived from its contract end date. */
 export type AssetLookupResult = NormalizedAsset & { contractStatus: string };
 
-export type ProductCategory = "Service" | "Parts";
+/**
+ * Which Manual Quote control a product belongs to: "Service" (labor, support,
+ * service contracts and warranties: the Service Type control), "Parts"
+ * (components and consumables) and "Instrument" (capital equipment); the last
+ * two are quoted as line items in Parts Configuration.
+ */
+export type ProductCategory = "Service" | "Parts" | "Instrument";
 
 export interface NormalizedProduct {
   partName: string;

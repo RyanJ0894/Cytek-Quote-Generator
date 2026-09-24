@@ -90,7 +90,12 @@ export const ListPartsResponse = zod.object({
       partNumber: zod.string().optional(),
       listPrice: zod.number(),
       netPrice: zod.number().optional(),
-      category: zod.string().optional().describe('\"Service\" or \"Parts\".'),
+      category: zod
+        .string()
+        .optional()
+        .describe(
+          '\"Service\" (labor, support, contracts: the Service Type control), \"Parts\" or \"Instrument\" (both quoted as line items in Parts Configuration).',
+        ),
       unit: zod
         .string()
         .optional()

@@ -144,7 +144,7 @@ export interface PartItem {
   partNumber?: string;
   listPrice: number;
   netPrice?: number;
-  /** "Service" or "Parts". */
+  /** "Service" (labor, support, contracts: the Service Type control), "Parts" or "Instrument" (both quoted as line items in Parts Configuration). */
   category?: string;
   /** Sale unit from the source (e.g. "Each", "Year"). */
   unit?: string;
