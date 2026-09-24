@@ -1,7 +1,8 @@
 import React, { useState } from "react";
 import { QuoteForm } from "@/components/QuoteForm";
 import { ExcelUpload, type ParsedUploadResult } from "@/components/ExcelUpload";
-import { Sparkles, ArrowLeft } from "lucide-react";
+import { Sparkles, ArrowLeft, Database } from "lucide-react";
+import { Link } from "wouter";
 import { motion, AnimatePresence } from "framer-motion";
 import { activeCompany } from "@workspace/config";
 
@@ -39,6 +40,13 @@ export default function Home() {
             />
 
             <div className="flex items-center gap-3">
+              <Link
+                href="/data-sources"
+                className="hidden sm:flex items-center gap-2 px-3 py-1.5 text-sm font-medium text-slate-600 hover:text-slate-900 hover:bg-slate-100 rounded-lg transition-colors"
+                title="Manage the asset and pricing data used by Manual Mode"
+              >
+                <Database className="w-4 h-4" /> Data Sources
+              </Link>
               {step === "form" && (
                 <button
                   onClick={handleReset}

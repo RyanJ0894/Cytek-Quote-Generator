@@ -15,4 +15,6 @@ export interface PartItem {
   category?: string;
   /** Sale unit from the source (e.g. "Each", "Year"). */
   unit?: string;
+  /** false when the source has no usable list price for this item (listPrice is 0). */
+  priced?: boolean;
 }

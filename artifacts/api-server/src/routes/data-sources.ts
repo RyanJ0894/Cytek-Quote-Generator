@@ -1,0 +1,107 @@
+import { Router, type IRouter, type Request, type Response, type NextFunction } from "express";
+import multer, { MulterError } from "multer";
+import { DataSourceError, getDataSourceService } from "../data-sources/service.js";
+
+const MAX_UPLOAD_BYTES = 20 * 1024 * 1024;
+const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: MAX_UPLOAD_BYTES } });
+
+const router: IRouter = Router();
+
+/** Express 5 types route params as string | string[]; these routes have a single :id. */
+function paramId(req: Request): string {
+  const id = (req.params as Record<string, string | string[]>)["id"];
+  return Array.isArray(id) ? id[0] : id;
+}
+
+function handle(err: unknown, res: Response, what: string) {
+  if (err instanceof DataSourceError) {
+    res.status(err.status).json({ error: err.message });
+    return;
+  }
+  console.error(`Error ${what}:`, err);
+  res.status(500).json({ error: `Failed ${what}` });
+}
+
+function workbookUpload(req: Request, res: Response, next: NextFunction) {
+  upload.single("file")(req, res, (err: unknown) => {
+    if (err instanceof MulterError) {
+      const message =
+        err.code === "LIMIT_FILE_SIZE"
+          ? `File is too large. Maximum size is ${MAX_UPLOAD_BYTES / (1024 * 1024)}MB.`
+          : `Upload failed: ${err.message}`;
+      res.status(400).json({ error: message });
+      return;
+    }
+    if (err) {
+      next(err);
+      return;
+    }
+    if (!req.file || !req.file.buffer?.length) {
+      res.status(400).json({ error: "Please choose an Excel workbook (.xlsx or .xls) to upload." });
+      return;
+    }
+    const name = req.file.originalname.toLowerCase();
+    if (!name.endsWith(".xlsx") && !name.endsWith(".xls")) {
+      res.status(400).json({ error: "Please upload an Excel file (.xlsx or .xls)" });
+      return;
+    }
+    next();
+  });
+}
+
+/** List every data source (built-in and uploaded) plus which one is the default. */
+router.get("/", async (_req, res) => {
+  try {
+    res.json(await getDataSourceService().list());
+  } catch (err) {
+    handle(err, res, "listing data sources");
+  }
+});
+
+/** Add a data source: multipart form with `name` and `file` (a Cytek-format workbook). */
+router.post("/", workbookUpload, async (req, res) => {
+  try {
+    const raw = (req.body as Record<string, unknown> | undefined)?.name;
+    const name = typeof raw === "string" ? raw : Array.isArray(raw) && typeof raw[0] === "string" ? raw[0] : "";
+    const summary = await getDataSourceService().importFromWorkbook(name, {
+      buffer: req.file!.buffer,
+      fileName: req.file!.originalname,
+    });
+    res.status(201).json(summary);
+  } catch (err) {
+    handle(err, res, "importing the data source");
+  }
+});
+
+/** Replace a data source's data from a newer workbook (id and name are kept). */
+router.post("/:id/replace", workbookUpload, async (req, res) => {
+  try {
+    const summary = await getDataSourceService().replaceWorkbook(paramId(req), {
+      buffer: req.file!.buffer,
+      fileName: req.file!.originalname,
+    });
+    res.json(summary);
+  } catch (err) {
+    handle(err, res, "replacing the data source");
+  }
+});
+
+router.post("/:id/default", async (req, res) => {
+  try {
+    const defaultId = await getDataSourceService().setDefault(paramId(req));
+    res.json({ defaultId });
+  } catch (err) {
+    handle(err, res, "setting the default data source");
+  }
+});
+
+router.delete("/:id", async (req, res) => {
+  try {
+    await getDataSourceService().delete(paramId(req));
+    res.status(204).end();
+  } catch (err) {
+    handle(err, res, "deleting the data source");
+  }
+});
+
+export default router;

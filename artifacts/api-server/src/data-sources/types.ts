@@ -2,14 +2,13 @@
  * Data Sources — the normalized data model that Manual Mode looks up against.
  *
  * A Data Source is one company's asset catalog plus product/pricing catalog,
- * already transformed from whatever shape it arrived in (today: Cytek's Excel
- * workbook) into these normalized records. Manual Mode and the API only ever
- * see these types; workbook-specific parsing lives in the importer for that
- * data source (see ./cytek/importer.ts).
+ * already transformed from the shape it arrived in (a "Cytek Quoting Tool"
+ * style workbook) into these normalized records. Manual Mode and the API only
+ * ever see these types; workbook parsing lives in workbook-importer.ts.
  *
- * Phase 2 ships exactly one data source (Cytek, the default). The interface is
- * deliberately small so that a future database-backed or user-uploaded source
- * can implement it without touching routes or the frontend.
+ * Sources come from two places: built-in ones compiled into the server
+ * (./cytek) and ones a user uploaded, kept in a DataSourceStore (./store.ts).
+ * Both implement the same DataSource interface.
  */
 
 export interface NormalizedAsset {
@@ -51,12 +50,19 @@ export type ProductCategory = "Service" | "Parts";
 export interface NormalizedProduct {
   partName: string;
   partNumber: string;
+  /** List price from the source, or 0 when the source has no price (see `priced`). */
   listPrice: number;
   /** Customer-facing net price. Equal to listPrice unless a source provides a real net price. */
   netPrice: number;
   category: ProductCategory;
   /** Sale unit from the source (e.g. "Each", "Year"), or "". */
   unit: string;
+  /**
+   * false when the source workbook has no usable list price for this item.
+   * Such items are still searchable so the user learns that the catalog has
+   * no price rather than wondering why the item is missing.
+   */
+  priced: boolean;
 }
 
 export interface SourceFileInfo {
@@ -81,7 +87,10 @@ export interface DataSourceManifest {
   sources: SourceFileInfo[];
   counts: {
     assets: number;
+    /** All imported products, priced or not. */
     products: number;
+    pricedProducts: number;
+    unpricedProducts: number;
     services: number;
     assetsEnrichedFromSupplement: number;
     /** Enriched assets whose account name differs between primary and supplement (address may be stale). */
@@ -89,7 +98,7 @@ export interface DataSourceManifest {
     assetsFacilityDefaultedToAccount: number;
   };
   rejected: Record<string, RejectedSummary>;
-  /** Normalized field -> "<sheet>!<column header>" (or a note) for traceability. */
+  /** Normalized field -> "<role> <sheet>!<column header>" (or a note) for traceability. */
   fieldMappings: {
     assets: Record<string, string>;
     products: Record<string, string>;
@@ -97,14 +106,28 @@ export interface DataSourceManifest {
   notes: string[];
 }
 
+/** A data source as persisted in a DataSourceStore. */
+export interface StoredDataSource {
+  id: string;
+  name: string;
+  manifest: DataSourceManifest;
+  assets: NormalizedAsset[];
+  products: NormalizedProduct[];
+  /** ISO timestamp; changes on every write and is used as the cache version. */
+  updatedAt: string;
+}
+
 export interface DataSourceSummary {
   id: string;
   name: string;
   isDefault: boolean;
+  /** Compiled into the server; cannot be deleted or replaced from the UI. */
+  builtIn: boolean;
   importedAt: string;
   sourceFiles: string[];
   assetCount: number;
   productCount: number;
+  unpricedProductCount: number;
 }
 
 export interface DataSource {
@@ -115,7 +138,7 @@ export interface DataSource {
   listSerials(): string[];
   /** Exact, case-insensitive, whitespace-trimmed match. */
   lookupAsset(serial: string): AssetLookupResult | null;
-  /** All priced products (parts and services). */
+  /** All products (parts and services), priced or not. */
   listProducts(): NormalizedProduct[];
   /** Products in the "Service" category. */
   listServices(): NormalizedProduct[];

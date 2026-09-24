@@ -8,9 +8,13 @@
 
 export * from "./assetData";
 export * from "./assetLookupResult";
+export * from "./dataSourceListing";
+export * from "./dataSourceParamParameter";
 export * from "./dataSourceSummary";
 export * from "./errorResponse";
 export * from "./healthStatus";
+export * from "./listPartsParams";
+export * from "./listSerialsParams";
 export * from "./lookupAssetParams";
 export * from "./partItem";
 export * from "./partsListResult";

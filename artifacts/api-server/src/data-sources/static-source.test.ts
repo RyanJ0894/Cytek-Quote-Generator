@@ -2,12 +2,11 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { createStaticDataSource, deriveContractStatus } from "./static-source.js";
 import { cytekDataSource } from "./cytek/index.js";
-import { getDefaultDataSource, summarize } from "./registry.js";
 import type { DataSourceManifest } from "./types.js";
 
 const manifest: DataSourceManifest = {
   id: "t", name: "T", importedAt: "2026-01-01T00:00:00.000Z", sources: [],
-  counts: { assets: 2, products: 2, services: 1, assetsEnrichedFromSupplement: 0, assetsEnrichedWithDifferentAccountName: 0, assetsFacilityDefaultedToAccount: 0 },
+  counts: { assets: 2, products: 2, pricedProducts: 2, unpricedProducts: 0, services: 1, assetsEnrichedFromSupplement: 0, assetsEnrichedWithDifferentAccountName: 0, assetsFacilityDefaultedToAccount: 0 },
   rejected: {}, fieldMappings: { assets: {}, products: {} }, notes: [],
 };
 
@@ -38,6 +37,7 @@ test("omitted fields are hydrated to empty strings / defaults", () => {
   assert.equal(a.contractEndDate, "");
   const w = ds.listProducts().find((p) => p.partName === "Widget")!;
   assert.equal(w.unit, "");
+  assert.equal(w.priced, true);
 });
 
 test("contract status derives from the end date", () => {
@@ -54,14 +54,10 @@ test("serials are sorted and de-duplicated; services filtered by category", () =
   assert.deepEqual(ds.listServices().map((p) => p.partName), ["Visit"]);
 });
 
-test("Cytek is the registered default data source", () => {
-  const d = getDefaultDataSource();
-  assert.equal(d, cytekDataSource);
-  const s = summarize(d);
-  assert.equal(s.id, "cytek");
-  assert.equal(s.name, "Cytek");
-  assert.equal(s.isDefault, true);
-  assert.equal(s.assetCount, 9635);
-  assert.equal(s.productCount, 5178);
-  assert.deepEqual(s.sourceFiles, ["Cytek Quoting Tool - Rev6.xlsx", "Cytek Quoting Tool - Rev5.xlsx"]);
+test("the built-in Cytek source exposes the imported counts", () => {
+  assert.equal(cytekDataSource.id, "cytek");
+  assert.equal(cytekDataSource.listSerials().length, 9635);
+  assert.equal(cytekDataSource.listProducts().length, 5419);
+  assert.equal(cytekDataSource.listServices().length, 164);
+  assert.equal(cytekDataSource.manifest.sources.map((s) => s.label).join(" + "), "Cytek Quoting Tool - Rev6.xlsx + Cytek Quoting Tool - Rev5.xlsx");
 });

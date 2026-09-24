@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import { useForm, useFieldArray } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
@@ -16,11 +16,13 @@ import type { ParsedUploadResult } from "./ExcelUpload";
 
 import { 
   useListSerials, 
+  getListSerialsQueryKey,
   useLookupAsset, 
   getLookupAssetQueryKey,
   useListParts, 
+  getListPartsQueryKey,
   useGenerateQuote,
-  useGetDataSource,
+  useListDataSources,
   type QuoteRequest,
   type PartItem
 } from "@workspace/api-client-react";
@@ -29,8 +31,18 @@ const quoteLineItemSchema = z.object({
   description: z.string().min(1, "Part description is required"),
   partNumber: z.string().optional(),
   quantity: z.coerce.number().min(1, "Must be at least 1"),
-  unitPrice: z.coerce.number().min(0, "Invalid price")
+  unitPrice: z.coerce.number().min(0, "Invalid price"),
+  discountPercent: z.coerce.number().min(0, "0-100").max(100, "0-100").default(0),
 });
+
+const roundMoney = (n: number) => Math.round(n * 100) / 100;
+
+/** Selling price per unit after a quote-specific percentage discount. Blank/0 keeps the list price. */
+export function applyDiscount(unitPrice: unknown, discountPercent: unknown): number {
+  const price = Number(unitPrice) || 0;
+  const pct = Math.min(100, Math.max(0, Number(discountPercent) || 0));
+  return roundMoney(price * (1 - pct / 100));
+}
 
 const quoteFormSchema = z.object({
   customerName: z.string().min(1, "Customer name is required"),
@@ -44,6 +56,7 @@ const quoteFormSchema = z.object({
   
   serviceType: z.string().optional(),
   servicePrice: z.coerce.number().min(0).optional(),
+  serviceDiscountPercent: z.coerce.number().min(0, "0-100").max(100, "0-100").default(0),
   
   parts: z.array(quoteLineItemSchema),
   
@@ -95,7 +108,7 @@ function buildInitialValues(parsed: ParsedUploadResult): Partial<QuoteFormValues
   // For "Parts Only": all parts items in parts list
   let serviceType = "";
   let servicePrice = 0;
-  let partsList: Array<{ description: string; partNumber: string; quantity: number; unitPrice: number }> = [];
+  let partsList: Array<{ description: string; partNumber: string; quantity: number; unitPrice: number; discountPercent: number }> = [];
 
   if (!isPartsOnly && serviceParts.length > 0) {
     serviceType = serviceParts[0].name;
@@ -106,6 +119,7 @@ function buildInitialValues(parsed: ParsedUploadResult): Partial<QuoteFormValues
       partNumber: p.partNumber,
       quantity: p.quantity,
       unitPrice: p.price,
+      discountPercent: 0,
     }));
   }
 
@@ -115,6 +129,7 @@ function buildInitialValues(parsed: ParsedUploadResult): Partial<QuoteFormValues
       partNumber: p.partNumber,
       quantity: p.quantity,
       unitPrice: p.price,
+      discountPercent: 0,
     }));
     partsList = [...partsList, ...partsItems];
   }
@@ -135,10 +150,21 @@ function buildInitialValues(parsed: ParsedUploadResult): Partial<QuoteFormValues
 export function QuoteForm({ parsedData }: QuoteFormProps) {
   const { toast } = useToast();
   
-  // Data Fetching
-  const { data: serialsData, isLoading: isLoadingSerials } = useListSerials();
-  const { data: partsData, isLoading: isLoadingParts } = useListParts();
-  const { data: dataSource } = useGetDataSource();
+  // Data source: the default one unless the user picks another (only offered
+  // when more than one is configured, so normal use has no extra step).
+  const { data: listing } = useListDataSources();
+  const [chosenDataSourceId, setChosenDataSourceId] = useState("");
+  const dataSourceId = chosenDataSourceId || listing?.defaultId || "";
+  const dataSource = listing?.dataSources.find((d) => d.id === dataSourceId);
+  const dsParams = dataSourceId ? { dataSource: dataSourceId } : undefined;
+
+  // Data Fetching (waits until the data source is known so nothing loads twice)
+  const { data: serialsData, isLoading: isLoadingSerials } = useListSerials(dsParams, {
+    query: { queryKey: getListSerialsQueryKey(dsParams), enabled: !!listing },
+  });
+  const { data: partsData, isLoading: isLoadingParts } = useListParts(dsParams, {
+    query: { queryKey: getListPartsQueryKey(dsParams), enabled: !!listing },
+  });
 
   // Services come from the data source ("Service" category: on-site support,
   // service contracts, ...) followed by the legacy labels not in the catalog.
@@ -170,6 +196,7 @@ export function QuoteForm({ parsedData }: QuoteFormProps) {
       productName: "",
       serviceType: "",
       servicePrice: 0,
+      serviceDiscountPercent: 0,
       parts: [],
       shippingAndHandling: 0,
       notes: "",
@@ -183,16 +210,42 @@ export function QuoteForm({ parsedData }: QuoteFormProps) {
   const serialNumber = watch("serialNumber");
   
   // Conditionally fetch asset data when a serial number is provided
+  const lookupParams = { serial: serialNumber, ...dsParams };
   const { data: assetData, isFetching: isFetchingAsset } = useLookupAsset(
-    { serial: serialNumber },
+    lookupParams,
     {
       query: {
-        queryKey: getLookupAssetQueryKey({ serial: serialNumber }),
-        enabled: !!serialNumber && serialNumber.length > 2,
+        queryKey: getLookupAssetQueryKey(lookupParams),
+        enabled: !!listing && !!serialNumber && serialNumber.length > 2,
         retry: false,
       },
     }
   );
+
+  // Switching data source starts the lookup over: clear the serial and
+  // everything it had populated so nothing from the other catalog lingers.
+  const switchDataSource = (id: string) => {
+    setChosenDataSourceId(id);
+    for (const f of ["serialNumber", "accountName", "facilityName", "address", "contractType", "contractStatus", "productName"] as const) {
+      setValue(f, "");
+    }
+  };
+
+  /** Catalog record behind a form line, used to flag items the source has no price for. */
+  const findProduct = (name: string | undefined, partNumber: string | undefined): PartItem | undefined => {
+    if (!name) return undefined;
+    const n = name.trim().toLowerCase();
+    const pn = (partNumber ?? "").trim().toLowerCase();
+    return (partsData?.parts ?? []).find(
+      (p) => p.partName.trim().toLowerCase() === n && (p.partNumber ?? "").trim().toLowerCase() === pn
+    );
+  };
+  const isUnpriced = (name: string | undefined, partNumber: string | undefined, price: unknown) => {
+    const match = findProduct(name, partNumber);
+    return !!match && match.priced === false && !(Number(price) > 0);
+  };
+  const productSecondary = (item: PartItem) =>
+    `${item.partNumber || ""}${item.priced === false ? " · no list price" : ""}`.trim();
 
   // When parsed data is provided, show a confirmation toast once
   useEffect(() => {
@@ -281,13 +334,17 @@ export function QuoteForm({ parsedData }: QuoteFormProps) {
       address: data.address,
       serialNumber: data.serialNumber,
       contractType: data.contractType,
+      productName: data.productName,
       serviceType: data.serviceType,
       servicePrice: data.servicePrice,
+      serviceDiscountPercent: data.serviceDiscountPercent || 0,
       parts: data.parts.map(p => ({
         description: p.description,
         partNumber: p.partNumber,
         quantity: p.quantity,
-        unitPrice: p.unitPrice
+        unitPrice: p.unitPrice,
+        discountPercent: p.discountPercent || 0,
+        netPrice: applyDiscount(p.unitPrice, p.discountPercent),
       })),
       shipping: data.shippingAndHandling || 0,
       notes: data.notes
@@ -299,17 +356,17 @@ export function QuoteForm({ parsedData }: QuoteFormProps) {
   // Inputs registered on number fields arrive as strings until submit, so
   // coerce here or "subtotal + shipping" would concatenate and show NaN.
   const parts = watch("parts");
-  const servicePrice = Number(watch("servicePrice")) || 0;
+  const serviceListPrice = Number(watch("servicePrice")) || 0;
+  const servicePrice = applyDiscount(serviceListPrice, watch("serviceDiscountPercent"));
   const sh = Number(watch("shippingAndHandling")) || 0;
   
-  const partsTotal = parts.reduce((acc, part) => {
+  const partsTotal = roundMoney(parts.reduce((acc, part) => {
     const qty = Number(part.quantity) || 0;
-    const price = Number(part.unitPrice) || 0;
-    return acc + (qty * price);
-  }, 0);
+    return acc + roundMoney(qty * applyDiscount(part.unitPrice, part.discountPercent));
+  }, 0));
   
-  const subtotal = servicePrice + partsTotal;
-  const total = subtotal + sh;
+  const subtotal = roundMoney(servicePrice + partsTotal);
+  const total = roundMoney(subtotal + sh);
 
   // Render Helpers
   const ErrorMsg = ({ field }: { field: string }) => {
@@ -339,10 +396,24 @@ export function QuoteForm({ parsedData }: QuoteFormProps) {
             <h2 className="text-xl">Customer Information</h2>
             <p className="text-sm text-muted-foreground">
               {parsedData ? "Populated from Excel — edit any field below" : "Details populated automatically from serial lookup"}
-              {dataSource && (
+              {listing && dataSource && (
                 <span className="text-muted-foreground/70">
-                  {" · "}
-                  {dataSource.name} data · {dataSource.assetCount.toLocaleString()} assets · updated {new Date(dataSource.importedAt).toLocaleDateString()}
+                  {" · Data: "}
+                  {listing.dataSources.length > 1 ? (
+                    <select
+                      value={dataSourceId}
+                      onChange={(e) => switchDataSource(e.target.value)}
+                      className="inline-block rounded-md border border-input bg-card px-1.5 py-0.5 text-xs text-foreground"
+                      aria-label="Data source"
+                    >
+                      {listing.dataSources.map((d) => (
+                        <option key={d.id} value={d.id}>{d.name}{d.isDefault ? " (default)" : ""}</option>
+                      ))}
+                    </select>
+                  ) : (
+                    <span>{dataSource.name}</span>
+                  )}
+                  {" · "}{dataSource.assetCount.toLocaleString()} assets · updated {new Date(dataSource.importedAt).toLocaleDateString()}
                 </span>
               )}
             </p>
@@ -454,25 +525,51 @@ export function QuoteForm({ parsedData }: QuoteFormProps) {
               }}
               getDisplayValue={(item: PartItem) => item.partName}
               getSearchValue={(item: PartItem) => `${item.partName} ${item.partNumber || ""}`}
-              getSecondaryValue={(item: PartItem) => item.partNumber || ""}
+              getSecondaryValue={productSecondary}
               placeholder="Search services (e.g. On-Site Support)..."
               disabled={isLoadingParts}
               icon={<Settings2 className="w-4 h-4 text-muted-foreground" />}
             />
+            {isUnpriced(watch("serviceType"), "", watch("servicePrice")) && (
+              <p className="text-xs mt-1 text-amber-700">
+                No list price in the {dataSource?.name ?? "current"} data for this service. Enter a price.
+              </p>
+            )}
           </div>
 
-          <div>
-            <InputLabel>Service Price ($)</InputLabel>
-            <div className="relative">
-              <span className="absolute left-3 top-2.5 text-slate-400 text-sm font-medium">$</span>
-              <input 
-                type="number" 
-                step="0.01"
-                {...register("servicePrice")} 
-                className="w-full pl-7 pr-4 py-2.5 rounded-xl border border-input bg-slate-50/50 focus:bg-white text-sm transition-all focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary"
-              />
+          <div className="grid grid-cols-3 gap-3">
+            <div className="col-span-1">
+              <InputLabel>Service Price ($)</InputLabel>
+              <div className="relative">
+                <span className="absolute left-3 top-2.5 text-slate-400 text-sm font-medium">$</span>
+                <input 
+                  type="number" 
+                  step="0.01"
+                  {...register("servicePrice")} 
+                  className="w-full pl-7 pr-2 py-2.5 rounded-xl border border-input bg-slate-50/50 focus:bg-white text-sm transition-all focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary"
+                />
+              </div>
+              <ErrorMsg field="servicePrice" />
             </div>
-            <ErrorMsg field="servicePrice" />
+            <div className="col-span-1">
+              <InputLabel>Discount %</InputLabel>
+              <input
+                type="number"
+                step="0.5"
+                min="0"
+                max="100"
+                placeholder="0"
+                {...register("serviceDiscountPercent")}
+                className="w-full px-3 py-2.5 rounded-xl border border-input bg-slate-50/50 focus:bg-white text-sm transition-all focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary"
+              />
+              <ErrorMsg field="serviceDiscountPercent" />
+            </div>
+            <div className="col-span-1">
+              <InputLabel>Adjusted</InputLabel>
+              <div className="w-full px-3 py-2.5 rounded-xl border border-transparent bg-slate-100 text-sm font-medium text-slate-700" data-testid="service-adjusted">
+                {formatCurrency(servicePrice)}
+              </div>
+            </div>
           </div>
         </div>
       </section>
@@ -491,7 +588,7 @@ export function QuoteForm({ parsedData }: QuoteFormProps) {
           </div>
           <button
             type="button"
-            onClick={() => append({ description: "", partNumber: "", quantity: 1, unitPrice: 0 })}
+            onClick={() => append({ description: "", partNumber: "", quantity: 1, unitPrice: 0, discountPercent: 0 })}
             className="flex items-center px-4 py-2 text-sm font-semibold rounded-lg bg-primary text-primary-foreground shadow hover:bg-primary/90 hover:shadow-md transition-all active:scale-95"
           >
             <Plus className="w-4 h-4 mr-1.5" /> Add Part
@@ -509,9 +606,12 @@ export function QuoteForm({ parsedData }: QuoteFormProps) {
 
           <AnimatePresence initial={false}>
             {fields.map((field, index) => {
-              const qty = watch(`parts.${index}.quantity`) || 0;
-              const price = watch(`parts.${index}.unitPrice`) || 0;
-              const extPrice = qty * price;
+              const qty = Number(watch(`parts.${index}.quantity`)) || 0;
+              const price = watch(`parts.${index}.unitPrice`);
+              const discount = watch(`parts.${index}.discountPercent`);
+              const adjusted = applyDiscount(price, discount);
+              const extPrice = roundMoney(qty * adjusted);
+              const unpriced = isUnpriced(watch(`parts.${index}.description`), watch(`parts.${index}.partNumber`), price);
 
               return (
                 <motion.div
@@ -522,7 +622,7 @@ export function QuoteForm({ parsedData }: QuoteFormProps) {
                   transition={{ duration: 0.2 }}
                   className="grid grid-cols-1 lg:grid-cols-12 gap-4 items-start p-4 bg-slate-50 border border-slate-200 rounded-xl group relative overflow-hidden"
                 >
-                  <div className="lg:col-span-4">
+                  <div className="lg:col-span-3">
                     <InputLabel required>Part Description</InputLabel>
                     <Autocomplete
                       items={partsData?.parts || []}
@@ -530,16 +630,21 @@ export function QuoteForm({ parsedData }: QuoteFormProps) {
                       onChange={(val) => setValue(`parts.${index}.description`, val, { shouldValidate: true })}
                       onSelect={(item: PartItem) => {
                         setValue(`parts.${index}.partNumber`, item.partNumber || "");
-                        setValue(`parts.${index}.unitPrice`, item.listPrice || 0);
+                        setValue(`parts.${index}.unitPrice`, roundMoney(item.listPrice || 0), { shouldValidate: true });
                       }}
                       getDisplayValue={(item: PartItem) => item.partName}
                       getSearchValue={(item: PartItem) => `${item.partName} ${item.partNumber || ""}`}
-                      getSecondaryValue={(item: PartItem) => item.partNumber || ""}
+                      getSecondaryValue={productSecondary}
                       placeholder="Search parts catalog..."
                       disabled={isLoadingParts}
                       icon={<FileBox className="w-4 h-4 text-muted-foreground" />}
                     />
                     <ErrorMsg field={`parts.${index}.description`} />
+                    {unpriced && (
+                      <p className="text-xs mt-1 text-amber-700">
+                        No list price in the {dataSource?.name ?? "current"} data for this item. Enter a price.
+                      </p>
+                    )}
                   </div>
 
                   <div className="lg:col-span-2">
@@ -551,36 +656,61 @@ export function QuoteForm({ parsedData }: QuoteFormProps) {
                     />
                   </div>
 
-                  <div className="grid grid-cols-2 lg:grid-cols-5 lg:col-span-5 gap-4">
-                    <div className="col-span-1 lg:col-span-2">
-                      <InputLabel required>Qty</InputLabel>
-                      <input 
-                        type="number" 
-                        {...register(`parts.${index}.quantity`)} 
-                        className="w-full px-3 py-2.5 rounded-lg border border-input bg-white text-sm focus:outline-none focus:border-primary focus:ring-1 focus:ring-primary"
-                      />
-                      <ErrorMsg field={`parts.${index}.quantity`} />
-                    </div>
-
-                    <div className="col-span-1 lg:col-span-3">
+                  <div className="grid grid-cols-2 sm:grid-cols-5 lg:col-span-6 gap-3">
+                    <div>
                       <InputLabel required>Unit Price</InputLabel>
                       <div className="relative">
-                        <span className="absolute left-3 top-2.5 text-slate-400 text-sm">$</span>
+                        <span className="absolute left-2.5 top-2.5 text-slate-400 text-sm">$</span>
                         <input 
                           type="number" 
                           step="0.01"
                           {...register(`parts.${index}.unitPrice`)} 
-                          className="w-full pl-7 pr-3 py-2.5 rounded-lg border border-input bg-white text-sm focus:outline-none focus:border-primary focus:ring-1 focus:ring-primary"
+                          className="w-full pl-6 pr-2 py-2.5 rounded-lg border border-input bg-white text-sm focus:outline-none focus:border-primary focus:ring-1 focus:ring-primary"
                         />
                       </div>
                       <ErrorMsg field={`parts.${index}.unitPrice`} />
                     </div>
+
+                    <div>
+                      <InputLabel>Disc. %</InputLabel>
+                      <input
+                        type="number"
+                        step="0.5"
+                        min="0"
+                        max="100"
+                        placeholder="0"
+                        {...register(`parts.${index}.discountPercent`)}
+                        className="w-full px-2 py-2.5 rounded-lg border border-input bg-white text-sm focus:outline-none focus:border-primary focus:ring-1 focus:ring-primary"
+                      />
+                      <ErrorMsg field={`parts.${index}.discountPercent`} />
+                    </div>
+
+                    <div>
+                      <InputLabel>Adjusted</InputLabel>
+                      <div className="w-full px-2 py-2.5 rounded-lg bg-slate-100 text-sm font-medium text-slate-700 truncate" data-testid={`parts-${index}-adjusted`}>
+                        {formatCurrency(adjusted)}
+                      </div>
+                    </div>
+
+                    <div>
+                      <InputLabel required>Qty</InputLabel>
+                      <input 
+                        type="number" 
+                        {...register(`parts.${index}.quantity`)} 
+                        className="w-full px-2 py-2.5 rounded-lg border border-input bg-white text-sm focus:outline-none focus:border-primary focus:ring-1 focus:ring-primary"
+                      />
+                      <ErrorMsg field={`parts.${index}.quantity`} />
+                    </div>
+
+                    <div>
+                      <InputLabel>Line Total</InputLabel>
+                      <div className="w-full px-2 py-2.5 rounded-lg bg-white border border-slate-200 text-sm font-semibold text-slate-700 truncate" data-testid={`parts-${index}-total`}>
+                        {formatCurrency(extPrice)}
+                      </div>
+                    </div>
                   </div>
 
-                  <div className="lg:col-span-1 flex items-center justify-between lg:justify-end h-full pt-6 lg:pt-0">
-                    <div className="lg:hidden text-sm font-semibold text-slate-600">
-                      Ext: {formatCurrency(extPrice)}
-                    </div>
+                  <div className="lg:col-span-1 flex items-center justify-end h-full pt-6 lg:pt-0">
                     <button
                       type="button"
                       onClick={() => remove(index)}
@@ -589,11 +719,6 @@ export function QuoteForm({ parsedData }: QuoteFormProps) {
                     >
                       <Trash2 className="w-5 h-5" />
                     </button>
-                  </div>
-                  
-                  {/* Subtle extended price indicator on large screens */}
-                  <div className="hidden lg:block absolute right-14 top-1/2 -translate-y-1/2 text-sm font-semibold text-slate-600 px-3 py-1 bg-white border border-slate-200 rounded-md shadow-sm">
-                    {formatCurrency(extPrice)}
                   </div>
                 </motion.div>
               );

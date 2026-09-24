@@ -4,6 +4,7 @@ Alyssa Sanfillipo
 RGON
 Ragon Institute of MGH MIT and Harvard - 600 Main
 St, Cambridge, Massachusetts 02139
+Serial Number: U1399
 QUOTE#: <QUOTE#>
 ItemDescriptionProductQtyListNetExt. Price
 NumberPricePrice
@@ -30,13 +31,13 @@ NumberPricePrice
 21Part 21PN-0213$30.00$90.00
 22Part 22PN-0221$31.00$31.00
 23Part 23PN-0232$32.00$64.00
-24Part 24PN-0243$33.00$99.00
 Cytek Biosciences Inc. | Offices in Fremont, CA 94538. 47215 Lakeview Blvd
 Phone: (510) 657-0102 | Fax: (510) 657-0151 | www.cytekbio.com | email: technical.support@cytekbio.com
 <DATE>
 QUOTE#: <QUOTE#>
 ItemDescriptionProductQtyListNetExt. Price
 NumberPricePrice
+24Part 24PN-0243$33.00$99.00
 25Part 25PN-0251$34.00$34.00
 26Part 26PN-0262$35.00$70.00
 27Part 27PN-0273$36.00$108.00

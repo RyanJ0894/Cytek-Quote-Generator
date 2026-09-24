@@ -43,6 +43,13 @@ export default defineConfig({
   zod: {
     input: {
       target: "./openapi.yaml",
+      // The multipart upload endpoints need DOM File/Blob types that the
+      // Node-only zod package does not have; the server validates those
+      // uploads itself (see routes/data-sources.ts).
+      filters: {
+        mode: "exclude",
+        tags: ["data-sources"],
+      },
       override: {
         transformer: titleTransformer,
       },

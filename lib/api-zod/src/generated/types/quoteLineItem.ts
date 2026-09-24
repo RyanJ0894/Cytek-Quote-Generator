@@ -10,5 +10,10 @@ export interface QuoteLineItem {
   description: string;
   partNumber?: string;
   quantity: number;
+  /** List price per unit before any discount. */
   unitPrice: number;
+  /** Quote-specific discount, 0-100. Blank/0 keeps the list price. */
+  discountPercent?: number;
+  /** Discounted (selling) price per unit. Defaults to unitPrice less discountPercent. */
+  netPrice?: number;
 }
