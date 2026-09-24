@@ -1,18 +1,33 @@
-import React from "react";
-import { Link } from "wouter";
+import React, { useState } from "react";
+import { Link, useLocation } from "wouter";
 import { motion } from "framer-motion";
-import { Database, ChevronRight, Star, Loader2, PlusCircle, AlertTriangle } from "lucide-react";
-import { useListDataSources } from "@workspace/api-client-react";
+import { Database, ChevronRight, Loader2, PlusCircle, AlertTriangle, Settings2, BadgeCheck, RefreshCw, Trash2, FileText } from "lucide-react";
+import { useListDataSources, type DataSourceSummary } from "@workspace/api-client-react";
 import { AppHeader, PageShell } from "@/components/AppHeader";
+import { SourceMenu } from "@/components/SourceMenu";
+import { DefaultBadge, ProfileBadge } from "@/components/SourceStatus";
+import { Dialog, DialogActions, dialogButton } from "@/components/ui/dialog";
+import { useDataSourceActions } from "@/hooks/use-data-source-actions";
+import { managePath, profilePath, quotePath } from "@/lib/api";
 
 /**
  * Home: "Create a Quote" by picking the saved Data Source to quote from.
- * Selecting one goes straight into Manual Quote for that source. Uploading
- * workbooks is a maintenance task that lives on the Data Sources page only.
+ * A fully configured source goes straight into Manual Quote. A source whose
+ * Quote Profile is incomplete first asks to finish setting it up. Each card
+ * also carries a compact management menu; uploading workbooks lives on the
+ * Data Sources page only.
  */
 export default function Home() {
   const { data, isLoading, error } = useListDataSources();
   const sources = data?.dataSources ?? [];
+  const [, navigate] = useLocation();
+  const actions = useDataSourceActions();
+  const [setupPrompt, setSetupPrompt] = useState<DataSourceSummary | null>(null);
+
+  const open = (ds: DataSourceSummary) => {
+    if (ds.quoteProfile.complete) navigate(quotePath(ds.id));
+    else setSetupPrompt(ds);
+  };
 
   return (
     <PageShell>
@@ -57,11 +72,14 @@ export default function Home() {
 
             <ul className="grid grid-cols-1 gap-4 max-w-2xl mx-auto" data-testid="source-picker">
               {sources.map((ds) => (
-                <li key={ds.id}>
-                  <Link
-                    href={`/quote/${encodeURIComponent(ds.id)}`}
-                    className="group flex items-center gap-4 bg-card rounded-2xl border border-border shadow-card-sm px-6 py-5 hover:border-primary/50 hover:shadow-card hover:-translate-y-0.5 transition-all"
+                <li key={ds.id} className="relative">
+                  {/* The card body starts a quote; the ⋯ menu manages the source without leaving the page. */}
+                  <button
+                    type="button"
+                    onClick={() => open(ds)}
+                    className="group w-full text-left flex items-center gap-4 bg-card rounded-2xl border border-border shadow-card-sm pl-6 pr-16 py-5 hover:border-primary/50 hover:shadow-card hover:-translate-y-0.5 transition-all"
                     data-testid={`pick-${ds.id}`}
+                    title={ds.quoteProfile.complete ? `Create a quote from ${ds.name}` : `${ds.name} still needs its Quote Profile`}
                   >
                     <div className="w-12 h-12 rounded-xl bg-primary/10 flex items-center justify-center text-primary flex-shrink-0">
                       <Database className="w-6 h-6" />
@@ -69,16 +87,8 @@ export default function Home() {
                     <div className="flex-1 min-w-0">
                       <div className="flex items-center gap-2 flex-wrap">
                         <span className="text-lg font-bold text-foreground">{ds.name}</span>
-                        {ds.isDefault && (
-                          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-semibold bg-success/15 text-success-foreground">
-                            <Star className="w-3 h-3" /> Default
-                          </span>
-                        )}
-                        {!ds.quoteProfile.complete && (
-                          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-semibold bg-warning/15 text-warning-foreground" title={`Missing: ${ds.quoteProfile.missing.join(", ")}`}>
-                            <AlertTriangle className="w-3 h-3" /> Quote Profile incomplete
-                          </span>
-                        )}
+                        {ds.isDefault && <DefaultBadge />}
+                        {!ds.quoteProfile.complete && <ProfileBadge ds={ds} short />}
                       </div>
                       <p className="text-sm text-muted-foreground">
                         {ds.quoteProfile.companyName ? `Quotes from ${ds.quoteProfile.companyName} · ` : ""}
@@ -86,7 +96,20 @@ export default function Home() {
                       </p>
                     </div>
                     <ChevronRight className="w-5 h-5 text-muted-foreground group-hover:text-primary transition-colors flex-shrink-0" />
-                  </Link>
+                  </button>
+                  <div className="absolute right-3 top-1/2 -translate-y-1/2">
+                    <SourceMenu
+                      label={`Manage ${ds.name}`}
+                      testId={`menu-${ds.id}`}
+                      items={[
+                        { label: "Create Quote", icon: <FileText className="w-4 h-4" />, href: quotePath(ds.id) },
+                        { label: "Edit Data Source", icon: <Settings2 className="w-4 h-4" />, href: managePath(ds.id) },
+                        { label: "Edit Quote Profile", icon: <BadgeCheck className="w-4 h-4" />, href: profilePath(ds.id) },
+                        { label: "Update Source Workbook", icon: <RefreshCw className="w-4 h-4" />, onSelect: () => actions.replaceWorkbook(ds), disabled: actions.busy !== null },
+                        { label: "Delete Data Source", icon: <Trash2 className="w-4 h-4" />, onSelect: () => actions.confirmDelete(ds), destructive: true, disabled: actions.busy !== null },
+                      ]}
+                    />
+                  </div>
                 </li>
               ))}
             </ul>
@@ -97,6 +120,34 @@ export default function Home() {
           </motion.div>
         )}
       </main>
+
+      {actions.elements}
+
+      {/* Incomplete source: make finishing the Quote Profile the obvious next step, without hard-blocking. */}
+      <Dialog
+        open={setupPrompt !== null}
+        onClose={() => setSetupPrompt(null)}
+        title={`Finish setting up ${setupPrompt?.name ?? ""}`}
+        description={
+          <>
+            Complete the Quote Profile so generated quotes contain the correct company information and branding.
+            {setupPrompt && setupPrompt.quoteProfile.missing.length > 0 && (
+              <span className="block mt-2 text-xs">Still missing: {setupPrompt.quoteProfile.missing.join(", ")}.</span>
+            )}
+          </>
+        }
+        icon={<AlertTriangle className="w-5 h-5" />}
+        testId="setup-prompt"
+      >
+        <DialogActions>
+          <button type="button" className={dialogButton.secondary} onClick={() => setupPrompt && navigate(quotePath(setupPrompt.id))} data-testid="continue-anyway">
+            Continue to Quote Anyway
+          </button>
+          <button type="button" className={dialogButton.primary} onClick={() => setupPrompt && navigate(profilePath(setupPrompt.id, true))} data-testid="complete-profile" data-autofocus>
+            Complete Quote Profile
+          </button>
+        </DialogActions>
+      </Dialog>
     </PageShell>
   );
 }

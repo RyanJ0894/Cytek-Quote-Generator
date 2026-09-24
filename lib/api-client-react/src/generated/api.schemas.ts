@@ -211,6 +211,10 @@ export type SetDefaultDataSource200 = {
   defaultId: string;
 };
 
+export type RenameDataSourceBody = {
+  name: string;
+};
+
 export type LookupAssetParams = {
   serial: string;
   /**

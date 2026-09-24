@@ -122,9 +122,28 @@ async function exerciseService(store: DataSourceStore) {
     (e: DataSourceError) => e.status === 400,
   );
 
-  // Delete everything: default falls back to whatever remains, then to none.
+  // Rename keeps id, data and profile.
+  const renamed = await svc.rename("company-b", "Company B (renamed)");
+  assert.equal(renamed.id, "company-b");
+  assert.equal(renamed.name, "Company B (renamed)");
+  assert.equal((await svc.resolve("company-b")).name, "Company B (renamed)");
+  assert.equal((await svc.getProfile("company-b"))?.companyName, "Company B LLC");
+  await assert.rejects(svc.rename("company-b", " "), (e: DataSourceError) => e.status === 400);
+  await assert.rejects(svc.rename("nope", "x"), (e: DataSourceError) => e.status === 404);
+
+  // Delete, then re-import under the same name: the id is reused, the data
+  // is fresh, and the deleted Quote Profile must NOT come back.
   await svc.delete("company-b");
   assert.equal(await store.getProfile("company-b"), null, "profile is deleted with its source");
+  const again = await svc.importFromWorkbook("Company B", { buffer: REV5, fileName: "rev5.xlsx" });
+  assert.equal(again.id, "company-b", "slug is free again after deletion");
+  assert.equal(again.assetCount, 3585);
+  assert.equal(again.quoteProfile.complete, false, "re-imported source starts with a fresh, incomplete profile");
+  assert.equal(again.quoteProfile.companyName, "");
+  assert.equal(await svc.getProfile("company-b"), null, "the deleted profile did not reappear");
+
+  // Delete everything: default falls back to whatever remains, then to none.
+  await svc.delete("company-b");
   assert.equal((await svc.list()).defaultId, "company-b-2", "first remaining by name");
   await svc.delete("company-b-2");
   await svc.delete("cytek");

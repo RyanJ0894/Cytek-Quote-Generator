@@ -720,13 +720,10 @@ export function QuoteForm({ dataSourceId, sources, onSwitch }: QuoteFormProps) {
               </div>
 
               {dataSource && !profileReady && (
-                <div className="mb-4 flex gap-2 items-start text-xs bg-warning/10 border border-warning/30 text-warning-foreground rounded-lg p-3" data-testid="profile-incomplete">
-                  <AlertTriangle className="w-4 h-4 flex-shrink-0 mt-0.5" />
-                  <div>
-                    The Quote Profile for <strong>{dataSource.name}</strong> is incomplete (missing: {dataSource.quoteProfile.missing.join(", ")}), so documents cannot be generated yet.{" "}
-                    <Link href={`/data-sources/${encodeURIComponent(dataSource.id)}/profile`} className="underline font-semibold">Edit Quote Profile</Link>
-                  </div>
-                </div>
+                <p className="mb-3 text-xs text-summary-muted flex items-center gap-1.5" data-testid="profile-incomplete">
+                  <AlertTriangle className="w-3.5 h-3.5 flex-shrink-0" />
+                  <span><Link href={`/data-sources/${encodeURIComponent(dataSource.id)}/profile`} className="underline font-semibold text-summary-foreground">Complete the Quote Profile</Link> to generate this quote.</span>
+                </p>
               )}
               <button
                 type="submit"

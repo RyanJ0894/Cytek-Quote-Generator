@@ -1,54 +1,30 @@
 import React, { useRef, useState } from "react";
 import { Link, useLocation } from "wouter";
-import { ArrowLeft, Database, Star, Trash2, Upload, RefreshCw, Loader2, AlertTriangle, FileText, BadgeCheck, Building2 } from "lucide-react";
-import { useListDataSources, getListDataSourcesQueryKey, type DataSourceSummary } from "@workspace/api-client-react";
+import { ArrowLeft, Database, Trash2, Upload, RefreshCw, Loader2, AlertTriangle, FileText, Building2, Settings2 } from "lucide-react";
+import { useListDataSources, type DataSourceSummary } from "@workspace/api-client-react";
 import { AppHeader, HeaderLink, PageShell } from "@/components/AppHeader";
-import { useQueryClient } from "@tanstack/react-query";
+import { DefaultBadge, ProfileBadge } from "@/components/SourceStatus";
+import { useDataSourceActions } from "@/hooks/use-data-source-actions";
 import { useToast } from "@/hooks/use-toast";
+import { api, logoUrl, managePath, profilePath, quotePath } from "@/lib/api";
 import { cn } from "@/lib/utils";
 
-const BASE_URL = import.meta.env.BASE_URL?.replace(/\/$/, "") ?? "";
-
-async function api(path: string, init?: RequestInit): Promise<any> {
-  const res = await fetch(`${BASE_URL}/api${path}`, init);
-  if (res.status === 204) return null;
-  const body = await res.json().catch(() => ({}));
-  if (!res.ok) throw new Error(body.error || `Request failed (${res.status})`);
-  return body;
-}
-
 /**
- * Data Sources: each one is a persistent, isolated Source of Truth (asset +
- * pricing catalog) that quotes are created from. Workbooks are uploaded
- * here, once, and never on the quoting path.
+ * Data Sources: the full management center. Each source is a persistent,
+ * isolated Source of Truth (asset + pricing catalog) plus its Quote Profile.
+ * Workbooks are uploaded here, once, and never on the quoting path. Adding a
+ * source continues straight into completing its Quote Profile.
  */
 export default function DataSourcesPage() {
   const { data, isLoading, error } = useListDataSources();
-  const queryClient = useQueryClient();
   const [, navigate] = useLocation();
   const { toast } = useToast();
-  const [busy, setBusy] = useState<string | null>(null);
+  const actions = useDataSourceActions();
+  const [importing, setImporting] = useState(false);
   const [name, setName] = useState("");
   const [file, setFile] = useState<File | null>(null);
   const [formError, setFormError] = useState("");
   const fileInput = useRef<HTMLInputElement>(null);
-  const replaceInput = useRef<HTMLInputElement>(null);
-  const [replaceTarget, setReplaceTarget] = useState<DataSourceSummary | null>(null);
-
-  const refresh = () => queryClient.invalidateQueries({ queryKey: getListDataSourcesQueryKey() });
-
-  const run = async (key: string, fn: () => Promise<void>, success: string) => {
-    setBusy(key);
-    try {
-      await fn();
-      await refresh();
-      toast({ title: success });
-    } catch (err: unknown) {
-      toast({ variant: "destructive", title: "Something went wrong", description: err instanceof Error ? err.message : String(err) });
-    } finally {
-      setBusy(null);
-    }
-  };
 
   const onAdd = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -58,48 +34,27 @@ export default function DataSourcesPage() {
     const body = new FormData();
     body.append("name", name.trim());
     body.append("file", file);
-    let imported: DataSourceSummary | null = null;
-    await run("add", async () => {
-      imported = await api("/data-sources", { method: "POST", body });
+    setImporting(true);
+    try {
+      const imported: DataSourceSummary = await api("/data-sources", { method: "POST", body });
       setName("");
       setFile(null);
       if (fileInput.current) fileInput.current.value = "";
-    }, "Data source added");
-    if (imported) {
-      const s = imported as DataSourceSummary;
+      await actions.refresh();
       toast({
-        title: `Imported "${s.name}"`,
-        description: `${s.assetCount.toLocaleString()} assets and ${s.productCount.toLocaleString()} products (${s.unpricedProductCount} without a list price). It is ready for quoting.`,
+        title: `Imported "${imported.name}"`,
+        description: `${imported.assetCount.toLocaleString()} assets and ${imported.productCount.toLocaleString()} products (${imported.unpricedProductCount} without a list price). Next: complete its Quote Profile.`,
       });
-      // Back to Create a Quote with the new source available.
-      navigate("/");
+      // Import Successful → Complete Quote Profile: the profile is part of creating a source.
+      navigate(profilePath(imported.id, true));
+    } catch (err: unknown) {
+      toast({ variant: "destructive", title: "Import failed", description: err instanceof Error ? err.message : String(err) });
+    } finally {
+      setImporting(false);
     }
   };
 
-  const onReplaceFile = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const f = e.target.files?.[0];
-    const target = replaceTarget;
-    if (!f || !target) return;
-    const body = new FormData();
-    body.append("file", f);
-    await run(`replace-${target.id}`, async () => {
-      await api(`/data-sources/${encodeURIComponent(target.id)}/replace`, { method: "POST", body });
-    }, `"${target.name}" updated from ${f.name}`);
-    setReplaceTarget(null);
-    if (replaceInput.current) replaceInput.current.value = "";
-  };
-
-  const setDefault = (ds: DataSourceSummary) =>
-    run(`default-${ds.id}`, async () => {
-      await api(`/data-sources/${encodeURIComponent(ds.id)}/default`, { method: "POST" });
-    }, `"${ds.name}" is now the default`);
-
-  const remove = (ds: DataSourceSummary) => {
-    if (!window.confirm(`Delete the data source "${ds.name}"? Its imported data is removed; quotes already generated are not affected.`)) return;
-    return run(`delete-${ds.id}`, async () => {
-      await api(`/data-sources/${encodeURIComponent(ds.id)}`, { method: "DELETE" });
-    }, `"${ds.name}" deleted`);
-  };
+  const busy = actions.busy !== null || importing;
 
   return (
     <PageShell>
@@ -111,8 +66,8 @@ export default function DataSourcesPage() {
         <div>
           <h2 className="text-3xl font-bold text-foreground font-display mb-2">Data Sources</h2>
           <p className="text-muted-foreground max-w-2xl">
-            Each Data Source is a Source of Truth: one company's or dataset's assets, products and prices. Upload its workbook once here;
-            it is normalized and saved, and quotes are created from it indefinitely without the spreadsheet. Come back only to add, update or remove a source.
+            Each Data Source is a Source of Truth: one company's or dataset's assets, products and prices, plus the Quote Profile that brands its documents. Upload its workbook once here;
+            it is normalized and saved, and quotes are created from it indefinitely without the spreadsheet. Come back to add, update or remove a source.
           </p>
         </div>
 
@@ -138,11 +93,11 @@ export default function DataSourcesPage() {
           )}
           <ul className="divide-y divide-border/60">
             {data?.dataSources.map((ds) => (
-              <li key={ds.id} className="px-6 py-4 flex flex-col sm:flex-row sm:items-center gap-4" data-testid={`ds-${ds.id}`}>
+              <li key={ds.id} className="px-6 py-4 flex flex-col sm:flex-row sm:items-start gap-4" data-testid={`ds-${ds.id}`}>
                 <div className="flex-1 min-w-0">
                   <div className="flex items-center gap-2 flex-wrap">
-                    <span className="font-semibold text-foreground">{ds.name}</span>
-                    {ds.isDefault && <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-semibold bg-success/15 text-success-foreground"><Star className="w-3 h-3" /> Default</span>}
+                    <Link href={managePath(ds.id)} className="font-semibold text-foreground hover:text-primary hover:underline underline-offset-2" title="Edit Data Source">{ds.name}</Link>
+                    {ds.isDefault && <DefaultBadge />}
                   </div>
                   <p className="text-xs text-muted-foreground mt-1">
                     {ds.assetCount.toLocaleString()} assets · {ds.productCount.toLocaleString()} products
@@ -152,18 +107,14 @@ export default function DataSourcesPage() {
 
                   <div className="mt-3 flex items-start gap-3 rounded-lg border border-border/60 bg-surface p-3" data-testid={`profile-${ds.id}`}>
                     {ds.quoteProfile.hasLogo ? (
-                      <img src={`${BASE_URL}/api/data-sources/${encodeURIComponent(ds.id)}/logo`} alt="" className="h-8 max-w-[120px] object-contain flex-shrink-0 rounded bg-white p-0.5" title="Document logo (shown as it prints)" />
+                      <img src={logoUrl(ds.id)} alt="" className="h-8 max-w-[120px] object-contain flex-shrink-0 rounded bg-white p-0.5" title="Document logo (shown as it prints)" />
                     ) : (
                       <div className="w-8 h-8 rounded-lg bg-muted flex items-center justify-center text-muted-foreground flex-shrink-0"><Building2 className="w-4 h-4" /></div>
                     )}
                     <div className="flex-1 min-w-0 text-xs">
                       <div className="flex items-center gap-2 flex-wrap">
                         <span className="font-semibold text-secondary-foreground">Quote Profile</span>
-                        {ds.quoteProfile.complete ? (
-                          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full font-semibold bg-success/15 text-success-foreground"><BadgeCheck className="w-3 h-3" /> Complete</span>
-                        ) : (
-                          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full font-semibold bg-warning/15 text-warning-foreground"><AlertTriangle className="w-3 h-3" /> Incomplete: {ds.quoteProfile.missing.join(", ")}</span>
-                        )}
+                        <ProfileBadge ds={ds} />
                       </div>
                       {ds.quoteProfile.companyName ? (
                         <p className="text-secondary-foreground mt-1">
@@ -177,28 +128,31 @@ export default function DataSourcesPage() {
                         <p className="text-muted-foreground mt-1">No seller identity yet: quotes from this source cannot be generated until the profile is filled in.</p>
                       )}
                     </div>
-                    <Link href={`/data-sources/${encodeURIComponent(ds.id)}/profile`} className="flex-shrink-0 px-3 py-1.5 text-xs font-semibold rounded-lg border border-border text-secondary-foreground hover:bg-card">
-                      Edit Quote Profile
+                    <Link href={profilePath(ds.id)} className={cn("flex-shrink-0 px-3 py-1.5 text-xs font-semibold rounded-lg border text-secondary-foreground hover:bg-card", ds.quoteProfile.complete ? "border-border" : "border-warning/50")}>
+                      {ds.quoteProfile.complete ? "Edit Quote Profile" : "Complete Quote Profile"}
                     </Link>
                   </div>
                 </div>
-                <div className="flex items-center gap-2 flex-shrink-0">
-                  <Link href={`/quote/${encodeURIComponent(ds.id)}`} title="Create a quote from this source"
+                <div className="flex items-center gap-2 flex-shrink-0 flex-wrap">
+                  <Link href={quotePath(ds.id)} title="Create a quote from this source"
                     className="inline-flex items-center gap-1 px-3 py-1.5 text-xs font-semibold rounded-lg bg-primary/10 text-primary hover:bg-primary/20">
                     <FileText className="w-3.5 h-3.5" /> Quote
                   </Link>
+                  <Link href={managePath(ds.id)} title="Edit Data Source" data-testid={`manage-${ds.id}`}
+                    className="inline-flex items-center gap-1 px-3 py-1.5 text-xs font-semibold rounded-lg border border-border text-secondary-foreground hover:bg-muted/60">
+                    <Settings2 className="w-3.5 h-3.5" /> Manage
+                  </Link>
                   {!ds.isDefault && (
-                    <button type="button" onClick={() => setDefault(ds)} disabled={busy !== null}
+                    <button type="button" onClick={() => actions.setDefault(ds)} disabled={busy}
                       className="px-3 py-1.5 text-xs font-semibold rounded-lg border border-border text-secondary-foreground hover:bg-muted/60 disabled:opacity-50">
-                      {busy === `default-${ds.id}` ? "…" : "Set as default"}
+                      {actions.busy === `default-${ds.id}` ? "…" : "Set as default"}
                     </button>
                   )}
-                  <button type="button" disabled={busy !== null}
-                    onClick={() => { setReplaceTarget(ds); replaceInput.current?.click(); }}
+                  <button type="button" disabled={busy} onClick={() => actions.replaceWorkbook(ds)}
                     className="inline-flex items-center gap-1 px-3 py-1.5 text-xs font-semibold rounded-lg border border-border text-secondary-foreground hover:bg-muted/60 disabled:opacity-50">
-                    <RefreshCw className="w-3.5 h-3.5" /> {busy === `replace-${ds.id}` ? "Updating…" : "Update workbook"}
+                    <RefreshCw className="w-3.5 h-3.5" /> {actions.busy === `replace-${ds.id}` ? "Updating…" : "Update workbook"}
                   </button>
-                  <button type="button" onClick={() => remove(ds)} disabled={busy !== null} title="Delete"
+                  <button type="button" onClick={() => actions.confirmDelete(ds)} disabled={busy} title="Delete" data-testid={`delete-${ds.id}`}
                     className="p-2 rounded-lg text-muted-foreground hover:text-destructive hover:bg-destructive/10 disabled:opacity-50">
                     <Trash2 className="w-4 h-4" />
                   </button>
@@ -206,36 +160,39 @@ export default function DataSourcesPage() {
               </li>
             ))}
           </ul>
-          <input ref={replaceInput} type="file" accept=".xlsx,.xls" className="hidden" onChange={onReplaceFile} />
         </section>
 
-        <section className="bg-card rounded-2xl border border-border shadow-card overflow-hidden">
+        <section className="bg-card rounded-2xl border border-border shadow-card overflow-hidden" data-testid="add-source">
           <div className="px-6 py-4 border-b border-border/60 flex items-center gap-3">
             <div className="w-9 h-9 rounded-xl bg-primary/10 flex items-center justify-center text-primary"><Upload className="w-5 h-5" /></div>
             <div>
               <h3 className="text-lg font-bold text-foreground">Add a data source</h3>
-              <p className="text-xs text-muted-foreground">Name it and upload a workbook with "Asset Data" and "Pricing Data" sheets (the Cytek Quoting Tool layout is the format supported today). This is the only time the file is needed. Afterwards, fill in the source's Quote Profile so its documents carry the right seller identity.</p>
+              <p className="text-xs text-muted-foreground">
+                <span className="font-semibold text-secondary-foreground">Step 1 of 2.</span> Name it and upload a workbook with "Asset Data" and "Pricing Data" sheets (the Cytek Quoting Tool layout is the format supported today). This is the only time the file is needed.
+                After the import you will complete the source's Quote Profile (company, logo, address, contact) so its documents carry the right seller identity.
+              </p>
             </div>
           </div>
           <form onSubmit={onAdd} className="p-6 grid grid-cols-1 sm:grid-cols-5 gap-4 items-end">
             <div className="sm:col-span-2">
               <label className="block text-sm font-semibold text-secondary-foreground mb-1.5">Name</label>
-              <input value={name} onChange={(e) => setName(e.target.value)} placeholder='e.g. "Evans Medical"'
+              <input value={name} onChange={(e) => setName(e.target.value)} placeholder='e.g. "Evans Medical"' data-testid="add-name"
                 className="w-full px-4 py-2.5 rounded-xl border border-input bg-surface focus:bg-card text-sm focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary" />
             </div>
             <div className="sm:col-span-2">
               <label className="block text-sm font-semibold text-secondary-foreground mb-1.5">Workbook (.xlsx)</label>
-              <input ref={fileInput} type="file" accept=".xlsx,.xls" onChange={(e) => setFile(e.target.files?.[0] ?? null)}
+              <input ref={fileInput} type="file" accept=".xlsx,.xls" onChange={(e) => setFile(e.target.files?.[0] ?? null)} data-testid="add-file"
                 className="w-full text-sm text-muted-foreground file:mr-3 file:py-2 file:px-3 file:rounded-lg file:border-0 file:bg-muted file:text-secondary-foreground file:font-semibold hover:file:bg-muted/70" />
             </div>
-            <button type="submit" disabled={busy !== null}
+            <button type="submit" disabled={busy} data-testid="add-submit"
               className={cn("sm:col-span-1 inline-flex items-center justify-center gap-2 py-2.5 px-4 rounded-xl font-bold text-sm bg-gradient-to-r from-primary to-primary-glow text-primary-foreground shadow-lg shadow-primary/25 hover:shadow-xl transition-all disabled:opacity-70")}>
-              {busy === "add" ? <><Loader2 className="w-4 h-4 animate-spin" /> Importing…</> : "Import"}
+              {importing ? <><Loader2 className="w-4 h-4 animate-spin" /> Importing…</> : "Import"}
             </button>
             {formError && <p className="sm:col-span-5 text-sm text-destructive">{formError}</p>}
           </form>
         </section>
       </main>
+      {actions.elements}
     </PageShell>
   );
 }

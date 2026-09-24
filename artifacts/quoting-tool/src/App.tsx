@@ -8,6 +8,7 @@ import Home from "./pages/home";
 import DataSourcesPage from "./pages/data-sources";
 import QuotePage from "./pages/quote";
 import QuoteProfilePage from "./pages/quote-profile";
+import DataSourceManagePage from "./pages/data-source-manage";
 import NotFound from "./pages/not-found";
 
 const queryClient = new QueryClient({
@@ -26,6 +27,7 @@ function Router() {
       <Route path="/quote/:id" component={QuotePage} />
       <Route path="/data-sources" component={DataSourcesPage} />
       <Route path="/data-sources/:id/profile" component={QuoteProfilePage} />
+      <Route path="/data-sources/:id" component={DataSourceManagePage} />
       <Route component={NotFound} />
     </Switch>
   );
