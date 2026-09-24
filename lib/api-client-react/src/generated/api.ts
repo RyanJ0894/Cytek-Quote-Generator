@@ -30,6 +30,7 @@ import type {
   QuoteProfile,
   QuoteProfileResult,
   QuoteRequest,
+  RenameDataSourceBody,
   ReplaceDataSourceWorkbookBody,
   SerialsListResult,
   SetDefaultDataSource200,
@@ -644,7 +645,94 @@ export const useSetDefaultDataSource = <
 };
 
 /**
- * @summary Delete an uploaded data source (built-in sources cannot be deleted)
+ * @summary Edit a data source's management fields (name)
+ */
+export const getRenameDataSourceUrl = (id: string) => {
+  return `/api/data-sources/${id}`;
+};
+
+export const renameDataSource = async (
+  id: string,
+  renameDataSourceBody: RenameDataSourceBody,
+  options?: RequestInit,
+): Promise<DataSourceSummary> => {
+  return customFetch<DataSourceSummary>(getRenameDataSourceUrl(id), {
+    ...options,
+    method: "PATCH",
+    headers: { "Content-Type": "application/json", ...options?.headers },
+    body: JSON.stringify(renameDataSourceBody),
+  });
+};
+
+export const getRenameDataSourceMutationOptions = <
+  TError = ErrorType<unknown>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof renameDataSource>>,
+    TError,
+    { id: string; data: BodyType<RenameDataSourceBody> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationOptions<
+  Awaited<ReturnType<typeof renameDataSource>>,
+  TError,
+  { id: string; data: BodyType<RenameDataSourceBody> },
+  TContext
+> => {
+  const mutationKey = ["renameDataSource"];
+  const { mutation: mutationOptions, request: requestOptions } = options
+    ? options.mutation &&
+      "mutationKey" in options.mutation &&
+      options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey }, request: undefined };
+
+  const mutationFn: MutationFunction<
+    Awaited<ReturnType<typeof renameDataSource>>,
+    { id: string; data: BodyType<RenameDataSourceBody> }
+  > = (props) => {
+    const { id, data } = props ?? {};
+
+    return renameDataSource(id, data, requestOptions);
+  };
+
+  return { mutationFn, ...mutationOptions };
+};
+
+export type RenameDataSourceMutationResult = NonNullable<
+  Awaited<ReturnType<typeof renameDataSource>>
+>;
+export type RenameDataSourceMutationBody = BodyType<RenameDataSourceBody>;
+export type RenameDataSourceMutationError = ErrorType<unknown>;
+
+/**
+ * @summary Edit a data source's management fields (name)
+ */
+export const useRenameDataSource = <
+  TError = ErrorType<unknown>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof renameDataSource>>,
+    TError,
+    { id: string; data: BodyType<RenameDataSourceBody> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationResult<
+  Awaited<ReturnType<typeof renameDataSource>>,
+  TError,
+  { id: string; data: BodyType<RenameDataSourceBody> },
+  TContext
+> => {
+  return useMutation(getRenameDataSourceMutationOptions(options));
+};
+
+/**
+ * @summary Delete a data source, its imported catalog and its Quote Profile
  */
 export const getDeleteDataSourceUrl = (id: string) => {
   return `/api/data-sources/${id}`;
@@ -705,7 +793,7 @@ export type DeleteDataSourceMutationResult = NonNullable<
 export type DeleteDataSourceMutationError = ErrorType<unknown>;
 
 /**
- * @summary Delete an uploaded data source (built-in sources cannot be deleted)
+ * @summary Delete a data source, its imported catalog and its Quote Profile
  */
 export const useDeleteDataSource = <
   TError = ErrorType<unknown>,

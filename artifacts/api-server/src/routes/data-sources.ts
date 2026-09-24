@@ -132,6 +132,20 @@ router.post("/:id/default", async (req, res) => {
   }
 });
 
+/** Edit a data source's management fields (currently: name). */
+router.patch("/:id", async (req, res) => {
+  try {
+    const body = (req.body ?? {}) as Record<string, unknown>;
+    if (typeof body.name !== "string") {
+      res.status(400).json({ error: "Provide the new name as { name }." });
+      return;
+    }
+    res.json(await getDataSourceService().rename(paramId(req), body.name));
+  } catch (err) {
+    handle(err, res, "renaming the data source");
+  }
+});
+
 router.delete("/:id", async (req, res) => {
   try {
     await getDataSourceService().delete(paramId(req));

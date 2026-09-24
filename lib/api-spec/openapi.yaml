@@ -177,10 +177,37 @@ paths:
                 required: [defaultId]
 
   /data-sources/{id}:
+    patch:
+      operationId: renameDataSource
+      tags: [data-sources]
+      summary: Edit a data source's management fields (name)
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                name:
+                  type: string
+              required: [name]
+      responses:
+        "200":
+          description: The updated data source
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DataSourceSummary"
     delete:
       operationId: deleteDataSource
       tags: [data-sources]
-      summary: Delete an uploaded data source (built-in sources cannot be deleted)
+      summary: Delete a data source, its imported catalog and its Quote Profile
       parameters:
         - name: id
           in: path

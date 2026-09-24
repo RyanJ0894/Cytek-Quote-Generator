@@ -62,6 +62,22 @@ test("quote profile endpoints: read, save, logo", async () => {
   assert.equal((await get("/api/data-sources/nope/profile")).status, 404);
 });
 
+test("PATCH /api/data-sources/:id renames a source; data and profile untouched", async () => {
+  const before = await get("/api/data-sources/cytek/profile");
+  let res = await fetch(baseUrl + "/api/data-sources/cytek", { method: "PATCH", headers: { "content-type": "application/json" }, body: JSON.stringify({ name: "Cytek — Renamed" }) });
+  assert.equal(res.status, 200);
+  assert.equal(((await res.json()) as any).name, "Cytek — Renamed");
+  const after = await get("/api/data-sources/cytek/profile");
+  assert.deepEqual(after.body, before.body, "renaming keeps the Quote Profile");
+  assert.equal((await get("/api/assets/serials?dataSource=cytek")).body.serials.length > 9000, true, "renaming keeps the data");
+  res = await fetch(baseUrl + "/api/data-sources/cytek", { method: "PATCH", headers: { "content-type": "application/json" }, body: JSON.stringify({ name: "  " }) });
+  assert.equal(res.status, 400);
+  res = await fetch(baseUrl + "/api/data-sources/nope", { method: "PATCH", headers: { "content-type": "application/json" }, body: JSON.stringify({ name: "x" }) });
+  assert.equal(res.status, 404);
+  res = await fetch(baseUrl + "/api/data-sources/cytek", { method: "PATCH", headers: { "content-type": "application/json" }, body: JSON.stringify({ name: "Cytek — Current" }) });
+  assert.equal(res.status, 200);
+});
+
 test("GET /api/assets/serials lists every imported serial", async () => {
   const { status, body } = await get("/api/assets/serials");
   assert.equal(status, 200);

@@ -247,6 +247,20 @@ export class DataSourceService {
     return this.summary(id);
   }
 
+  /** Renames a data source (id, data and Quote Profile are unchanged). */
+  async rename(id: string, name: string): Promise<DataSourceSummary> {
+    await this.ensureSeeded();
+    const trimmed = (name ?? "").trim();
+    if (!trimmed) throw new DataSourceError(400, "A data source name is required.");
+    const existing = await this.store.get(id);
+    if (!existing) throw new DataSourceError(404, `Unknown data source: ${id}`);
+    if (trimmed !== existing.name) {
+      await this.store.put({ id, name: trimmed, manifest: existing.manifest, assets: existing.assets, products: existing.products });
+      this.cache.delete(id);
+    }
+    return this.summary(id);
+  }
+
   async setDefault(id: string): Promise<string> {
     await this.ensureSeeded();
     if ((await this.store.getVersion(id)) === null) throw new DataSourceError(404, `Unknown data source: ${id}`);
