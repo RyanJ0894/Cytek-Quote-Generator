@@ -48,6 +48,8 @@ export interface DataSourceListing {
   /** false when data sources will not survive a restart (no storage configured). */
   persistent: boolean;
   storeKind: DataSourceStore["kind"];
+  /** Names (never values) of the environment variables the server considered for its database, and any connection error. */
+  storage: StorageDiagnostics;
 }
 
 export function slugify(name: string): string {
@@ -139,7 +141,7 @@ export class DataSourceService {
     const dataSources = (
       await Promise.all(all.map(async (h) => this.summarize(h, defaultId, summarizeQuoteProfile(await this.store.getProfile(h.id)))))
     ).sort((a, b) => Number(b.isDefault) - Number(a.isDefault) || a.name.localeCompare(b.name));
-    return { dataSources, defaultId, persistent: this.store.persistent, storeKind: this.store.kind };
+    return { dataSources, defaultId, persistent: this.store.persistent, storeKind: this.store.kind, storage: getStorageDiagnostics() };
   }
 
   /**
@@ -286,32 +288,76 @@ export class DataSourceService {
  * Connection-string variables, in order of preference. `DATABASE_URL` is the
  * documented one; the others are what Vercel's Postgres integrations (Neon,
  * Supabase, the legacy Vercel Postgres) set automatically, so connecting a
- * database in the Vercel dashboard is enough.
+ * database in the Vercel dashboard is enough. Integrations can also add a
+ * custom prefix (e.g. `STORAGE_DATABASE_URL`), so any variable whose name
+ * ends in one of these and whose value is a postgres:// URL is accepted too.
  */
 const DATABASE_URL_VARS = ["DATABASE_URL", "POSTGRES_URL", "DATABASE_URL_UNPOOLED", "POSTGRES_PRISMA_URL", "POSTGRES_URL_NON_POOLING", "NEON_DATABASE_URL"];
+const PG_PARTS = ["PGHOST", "PGUSER", "PGPASSWORD", "PGDATABASE"] as const;
 
-export function databaseUrlFromEnv(env: NodeJS.ProcessEnv = process.env): { name: string; url: string } | null {
+const isPostgresUrl = (v: string | undefined): v is string => !!v && /^postgres(ql)?:\/\//i.test(v.trim());
+
+export interface DatabaseEnv {
+  /** Variable the connection came from ("PGHOST…" for component variables). */
+  name: string;
+  url: string | null;
+  /** Names (never values) of every variable that looked database-related, for diagnostics. */
+  candidates: string[];
+}
+
+/** Which environment variable, if any, provides the Postgres connection. */
+export function databaseUrlFromEnv(env: NodeJS.ProcessEnv = process.env): DatabaseEnv | null {
+  const candidates = Object.keys(env)
+    .filter((k) => /(DATABASE|POSTGRES|NEON|^PG)/i.test(k))
+    .sort();
   for (const name of DATABASE_URL_VARS) {
-    const url = env[name]?.trim();
-    if (url) return { name, url };
+    if (isPostgresUrl(env[name])) return { name, url: env[name]!.trim(), candidates };
   }
+  // Prefixed variants, pooled ones first.
+  const prefixed = candidates
+    .filter((k) => /(DATABASE_URL|POSTGRES_URL)$/i.test(k) && isPostgresUrl(env[k]))
+    .sort((a, b) => Number(/UNPOOLED|NON_POOLING/i.test(a)) - Number(/UNPOOLED|NON_POOLING/i.test(b)) || a.localeCompare(b));
+  if (prefixed.length) return { name: prefixed[0], url: env[prefixed[0]]!.trim(), candidates };
+  // Any other *_URL / *_URI holding a postgres URL (e.g. POSTGRES_PRISMA_URL with a prefix).
+  const anyUrl = candidates.find((k) => /(URL|URI)$/i.test(k) && isPostgresUrl(env[k]));
+  if (anyUrl) return { name: anyUrl, url: env[anyUrl]!.trim(), candidates };
+  // Component variables (pg reads PGHOST/PGUSER/PGPASSWORD/PGDATABASE itself).
+  if (PG_PARTS.every((k) => env[k]?.trim())) return { name: PG_PARTS.join("/"), url: null, candidates };
   return null;
 }
 
+/** What the running server knows about its storage, for the Data Sources page (names only, never values). */
+export interface StorageDiagnostics {
+  selectedVar: string | null;
+  candidateVars: string[];
+  lookedFor: string[];
+  error: string | null;
+}
+let storageDiagnostics: StorageDiagnostics = { selectedVar: null, candidateVars: [], lookedFor: DATABASE_URL_VARS, error: null };
+export const getStorageDiagnostics = (): StorageDiagnostics => storageDiagnostics;
+export const reportStorageError = (err: unknown): void => {
+  storageDiagnostics = { ...storageDiagnostics, error: err instanceof Error ? err.message : String(err) };
+};
+
 /** Hosted Postgres requires TLS; local databases usually do not offer it. */
-export function pgPoolConfig(url: string): pg.PoolConfig {
+export function pgPoolConfig(url: string | null, env: NodeJS.ProcessEnv = process.env): pg.PoolConfig {
   let host = "";
   let hasSslMode = false;
-  try {
-    const u = new URL(url);
-    host = u.hostname;
-    hasSslMode = u.searchParams.has("sslmode") || u.searchParams.has("ssl");
-  } catch {
-    /* pg will report the malformed URL */
+  if (url) {
+    try {
+      const u = new URL(url);
+      host = u.hostname;
+      hasSslMode = u.searchParams.has("sslmode") || u.searchParams.has("ssl");
+    } catch {
+      /* pg will report the malformed URL */
+    }
+  } else {
+    host = env["PGHOST"] ?? "";
+    hasSslMode = !!env["PGSSLMODE"];
   }
   const local = host === "localhost" || host === "127.0.0.1" || host === "::1" || host === "";
   return {
-    connectionString: url,
+    ...(url ? { connectionString: url } : {}),
     ...(local || hasSslMode ? {} : { ssl: { rejectUnauthorized: true } }),
     // Serverless: many short-lived function instances share the database, so keep each pool small.
     max: 3,
@@ -322,6 +368,12 @@ export function pgPoolConfig(url: string): pg.PoolConfig {
 
 function createStoreFromEnv(): DataSourceStore {
   const db = databaseUrlFromEnv();
+  storageDiagnostics = {
+    selectedVar: db?.name ?? null,
+    candidateVars: Object.keys(process.env).filter((k) => /(DATABASE|POSTGRES|NEON|^PG)/i.test(k)).sort(),
+    lookedFor: DATABASE_URL_VARS,
+    error: null,
+  };
   if (db) {
     console.info(`[data-sources] Using Postgres from ${db.name} (persistent).`);
     return new PgDataSourceStore(new pg.Pool(pgPoolConfig(db.url)));
@@ -329,7 +381,7 @@ function createStoreFromEnv(): DataSourceStore {
   const dir = process.env["DATA_SOURCES_DIR"];
   if (dir) return new FileDataSourceStore(dir);
   console.warn(
-    "[data-sources] No DATABASE_URL (or POSTGRES_URL) and no DATA_SOURCES_DIR configured: data sources you add live only in this process's memory. They are lost on restart, and on serverless hosting (Vercel) other function instances will not see them at all. Connect a Postgres database and set DATABASE_URL.",
+    `[data-sources] No Postgres connection found in the environment (looked for ${DATABASE_URL_VARS.join(", ")}, prefixed variants and PGHOST/PGUSER/PGPASSWORD/PGDATABASE; database-like variables present: ${storageDiagnostics.candidateVars.join(", ") || "none"}) and no DATA_SOURCES_DIR: data sources you add live only in this process's memory. They are lost on restart, and on serverless hosting (Vercel) other function instances will not see them at all.`,
   );
   return new MemoryDataSourceStore();
 }

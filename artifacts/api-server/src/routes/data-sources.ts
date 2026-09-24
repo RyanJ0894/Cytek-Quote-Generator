@@ -1,6 +1,6 @@
 import { Router, type IRouter, type Request, type Response, type NextFunction } from "express";
 import multer, { MulterError } from "multer";
-import { DataSourceError, getDataSourceService } from "../data-sources/service.js";
+import { DataSourceError, getDataSourceService, getStorageDiagnostics, reportStorageError } from "../data-sources/service.js";
 import { logoBuffer, quoteProfileStatus } from "../data-sources/quote-profile.js";
 
 const MAX_UPLOAD_BYTES = 20 * 1024 * 1024;
@@ -14,9 +14,23 @@ function paramId(req: Request): string {
   return Array.isArray(id) ? id[0] : id;
 }
 
+/** Errors thrown by the pg driver (connection refused, auth, TLS, DNS) rather than by the app. */
+function isDatabaseError(err: unknown): err is Error {
+  if (!(err instanceof Error)) return false;
+  const code = (err as { code?: string }).code ?? "";
+  return /ECONNREFUSED|ENOTFOUND|ETIMEDOUT|ECONNRESET|EAI_AGAIN|28P01|28000|3D000|08\d{3}|SELF_SIGNED|CERT_|DEPTH_ZERO/.test(code) ||
+    /password authentication|no pg_hba|SSL|ssl|timeout|getaddrinfo|connect ECONN|database .* does not exist/i.test(err.message);
+}
+
 function handle(err: unknown, res: Response, what: string) {
   if (err instanceof DataSourceError) {
     res.status(err.status).json({ error: err.message });
+    return;
+  }
+  if (isDatabaseError(err)) {
+    reportStorageError(err);
+    console.error(`Database error ${what}:`, err);
+    res.status(503).json({ error: `Database connection failed: ${err.message}`, storage: getStorageDiagnostics() });
     return;
   }
   console.error(`Error ${what}:`, err);

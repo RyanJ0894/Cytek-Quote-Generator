@@ -17,6 +17,7 @@ import { cn } from "@/lib/utils";
  */
 export default function DataSourcesPage() {
   const { data, isLoading, error } = useListDataSources();
+  const listError = error as { data?: { error?: string; storage?: { candidateVars?: string[]; selectedVar?: string | null } }; message?: string } | null;
   const [, navigate] = useLocation();
   const { toast } = useToast();
   const actions = useDataSourceActions();
@@ -71,6 +72,19 @@ export default function DataSourcesPage() {
           </p>
         </div>
 
+        {listError && (
+          <div className="flex gap-3 items-start bg-destructive/10 border border-destructive/40 text-foreground rounded-xl p-4 text-sm" data-testid="storage-error">
+            <AlertTriangle className="w-5 h-5 flex-shrink-0 mt-0.5 text-destructive" />
+            <div>
+              <p className="font-semibold">Could not load data sources.</p>
+              <p className="text-muted-foreground">{listError.data?.error || listError.message}</p>
+              {listError.data?.storage?.selectedVar && (
+                <p className="text-muted-foreground mt-1">The server is trying to use the database from <code>{listError.data.storage.selectedVar}</code>. Check that variable's value in Vercel → Settings → Environment Variables, then redeploy.</p>
+              )}
+            </div>
+          </div>
+        )}
+
         {data && !data.persistent && (
           <div className="flex gap-3 items-start bg-warning/10 border border-warning/30 text-warning-foreground rounded-xl p-4 text-sm">
             <AlertTriangle className="w-5 h-5 flex-shrink-0 mt-0.5" />
@@ -80,6 +94,18 @@ export default function DataSourcesPage() {
                 Data sources you add or change here live only in the memory of the server process that received them: they are lost when it restarts, and on serverless hosting
                 other instances will not see them at all (lookups can fail with "Unknown data source" a moment after an import). The shipped Cytek — Current source is re-created each time.
                 Connect a Postgres database and set <code>DATABASE_URL</code> (see the README) to enable saving.
+              </p>
+              <p className="mt-2 text-xs" data-testid="storage-diagnostics">
+                {data.storage.candidateVars.length === 0 ? (
+                  <>
+                    This deployment's environment contains <strong>no database variables at all</strong> (looked for {data.storage.lookedFor.join(", ")}, prefixed variants and PGHOST/PGUSER/PGPASSWORD/PGDATABASE).
+                    If a database is already connected in Vercel → Storage, its variables only reach deployments created afterwards: open Deployments and <strong>Redeploy</strong> the latest one, and check that the database is connected to the <strong>Production</strong> environment.
+                  </>
+                ) : (
+                  <>
+                    Database-related variables present but none holds a <code>postgres://</code> connection string: {data.storage.candidateVars.join(", ")}. Add <code>DATABASE_URL</code> with the database's connection string, then redeploy.
+                  </>
+                )}
               </p>
             </div>
           </div>

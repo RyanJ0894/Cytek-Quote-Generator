@@ -5,6 +5,7 @@
  * Cytek Quoting Tool API
  * OpenAPI spec version: 0.1.0
  */
+import type { DataSourceListingStorage } from "./dataSourceListingStorage";
 import type { DataSourceSummary } from "./dataSourceSummary";
 
 export interface DataSourceListing {
@@ -15,4 +16,6 @@ export interface DataSourceListing {
   persistent: boolean;
   /** memory, file or postgres. */
   storeKind: string;
+  /** Names (never values) of the environment variables the server considered for its database, and any connection error. */
+  storage: DataSourceListingStorage;
 }
