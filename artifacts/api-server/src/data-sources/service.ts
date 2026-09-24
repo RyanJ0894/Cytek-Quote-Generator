@@ -12,6 +12,13 @@ import { createHash } from "node:crypto";
 import xlsx from "xlsx";
 import pg from "pg";
 import type { DataSource, DataSourceSummary, SeedDataSource, StoredDataSource } from "./types.js";
+import {
+  normalizeQuoteProfile,
+  QuoteProfileError,
+  summarizeQuoteProfile,
+  type QuoteProfile,
+  type QuoteProfileSummary,
+} from "./quote-profile.js";
 import { createStaticDataSource } from "./static-source.js";
 import { importWorkbook } from "./workbook-importer.js";
 import { DEFAULT_SOURCE_KEY, MemoryDataSourceStore, type DataSourceStore, type StoredDataSourceHeader } from "./store.js";
@@ -73,7 +80,9 @@ export class DataSourceService {
         for (const seed of this.seeds) {
           if (await this.store.getSetting(seededKey(seed.id))) continue;
           if ((await this.store.getVersion(seed.id)) === null) {
-            await this.store.put(seed);
+            const { quoteProfile, ...record } = seed;
+            await this.store.put(record);
+            if (quoteProfile) await this.store.setProfile(seed.id, quoteProfile);
             await this.adoptAsDefaultIfNone(seed.id);
           }
           await this.store.setSetting(seededKey(seed.id), new Date().toISOString());
@@ -109,11 +118,12 @@ export class DataSourceService {
     return all[0].id;
   }
 
-  private summarize(h: StoredDataSourceHeader, defaultId: string | null): DataSourceSummary {
+  private summarize(h: StoredDataSourceHeader, defaultId: string | null, profile: QuoteProfileSummary): DataSourceSummary {
     return {
       id: h.id,
       name: h.name,
       isDefault: h.id === defaultId,
+      quoteProfile: profile,
       importedAt: h.manifest.importedAt,
       updatedAt: h.updatedAt,
       sourceFiles: h.manifest.sources.map((s) => s.label),
@@ -126,9 +136,9 @@ export class DataSourceService {
   async list(): Promise<DataSourceListing> {
     const all = await this.headers();
     const defaultId = await this.getDefaultId();
-    const dataSources = all
-      .map((h) => this.summarize(h, defaultId))
-      .sort((a, b) => Number(b.isDefault) - Number(a.isDefault) || a.name.localeCompare(b.name));
+    const dataSources = (
+      await Promise.all(all.map(async (h) => this.summarize(h, defaultId, summarizeQuoteProfile(await this.store.getProfile(h.id)))))
+    ).sort((a, b) => Number(b.isDefault) - Number(a.isDefault) || a.name.localeCompare(b.name));
     return { dataSources, defaultId, persistent: this.store.persistent, storeKind: this.store.kind };
   }
 
@@ -158,7 +168,28 @@ export class DataSourceService {
     const ds = await this.resolve(id);
     const header = (await this.headers()).find((h) => h.id === ds.id);
     if (!header) throw new DataSourceError(404, `Unknown data source: ${ds.id}`);
-    return this.summarize(header, await this.getDefaultId());
+    return this.summarize(header, await this.getDefaultId(), summarizeQuoteProfile(await this.store.getProfile(ds.id)));
+  }
+
+  /** The seller identity for a source, or null when none has been set up yet. Never falls back to another source. */
+  async getProfile(id: string): Promise<QuoteProfile | null> {
+    await this.ensureSeeded();
+    if ((await this.store.getVersion(id)) === null) throw new DataSourceError(404, `Unknown data source: ${id}`);
+    return this.store.getProfile(id);
+  }
+
+  async setProfile(id: string, input: unknown): Promise<QuoteProfile> {
+    await this.ensureSeeded();
+    if ((await this.store.getVersion(id)) === null) throw new DataSourceError(404, `Unknown data source: ${id}`);
+    let profile: QuoteProfile;
+    try {
+      profile = normalizeQuoteProfile(input);
+    } catch (err) {
+      if (err instanceof QuoteProfileError) throw new DataSourceError(400, err.message);
+      throw err;
+    }
+    await this.store.setProfile(id, profile);
+    return profile;
   }
 
   private async uniqueId(name: string): Promise<string> {

@@ -8,6 +8,8 @@
 import type { QuoteLineItem } from "./quoteLineItem";
 
 export interface QuoteRequest {
+  /** Data source whose Quote Profile brands the document (and whose catalog the quote was built from). */
+  dataSource?: string;
   customerName: string;
   accountName?: string;
   facilityName?: string;

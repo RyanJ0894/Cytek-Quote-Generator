@@ -1,35 +1,33 @@
 import React from "react";
 import { Link } from "wouter";
-import { Database, Sparkles } from "lucide-react";
-import { activeCompany } from "@workspace/config";
+import { Database } from "lucide-react";
 
-/** Shared sticky header: logo (home), page-specific actions, Data Sources link. */
+/** Neutral application identity: this is the quoting app, not any one seller. */
+export function AppIdentity() {
+  return (
+    <Link href="/" title="Home" className="flex flex-col leading-none select-none">
+      <span className="text-xl font-extrabold tracking-[0.18em] text-slate-900 font-display">EVANS</span>
+      <span className="text-[10px] font-semibold tracking-[0.22em] text-primary uppercase">Quote Generator</span>
+    </Link>
+  );
+}
+
+/** Shared sticky header: app identity (home), page-specific actions, Data Sources link. */
 export function AppHeader({ children }: { children?: React.ReactNode }) {
   return (
     <header className="bg-white/80 backdrop-blur-md border-b border-slate-200 sticky top-0 z-40">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
         <div className="flex items-center justify-between h-16">
-          <Link href="/" title="Home">
-            <img
-              src={`/${activeCompany.logo.fileName}`}
-              alt={`${activeCompany.shortName} Quote Generator`}
-              className="h-10 w-auto object-contain"
-            />
-          </Link>
-
+          <AppIdentity />
           <div className="flex items-center gap-3">
             {children}
             <Link
               href="/data-sources"
               className="flex items-center gap-2 px-3 py-1.5 text-sm font-medium text-slate-600 hover:text-slate-900 hover:bg-slate-100 rounded-lg transition-colors"
-              title="Manage the Sources of Truth (asset and pricing data) used for quoting"
+              title="Manage the Sources of Truth (data + quote profile) used for quoting"
             >
               <Database className="w-4 h-4" /> Data Sources
             </Link>
-            <div className="hidden sm:flex items-center gap-2 text-sm font-medium text-slate-500 bg-slate-100 px-3 py-1.5 rounded-full border border-slate-200">
-              <Sparkles className="w-4 h-4 text-amber-500" />
-              FSE Portal
-            </div>
           </div>
         </div>
       </div>

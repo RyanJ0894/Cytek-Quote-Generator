@@ -1,36 +1,29 @@
-import type { CompanyConfig } from "../types.js";
+/**
+ * The Quote Profile seeded for the "Cytek — Current" data source: the seller
+ * identity and document branding that used to be hardcoded application-wide
+ * (formerly lib/config). It is saved into the store on first start alongside
+ * the seeded data and is thereafter edited on the Data Sources page.
+ */
+import type { QuoteProfile } from "../quote-profile.js";
+import { CYTEK_LOGO_DATA_URL } from "./logo-data.js";
 
 const TC_INTRO = `These general terms and conditions (along with the quotation, "Terms") apply to the purchase of time and/materials by the customer ("Customer", "Purchaser", "Buyer", also "you" or "your") listed on the attached "quotation" and Cytek Biosciences, Inc. ("Cytek", also "our," "we" or "us").`;
 
-export const cytekConfig: CompanyConfig = {
-  id: "cytek",
-  dataSourceId: "cytek",
-  legalName: "Cytek Biosciences Inc.",
+export const cytekQuoteProfile: QuoteProfile = {
+  companyName: "Cytek Biosciences Inc.",
   shortName: "Cytek",
-  address: {
-    street: "47215 Lakeview Blvd",
-    cityStateZip: "Fremont, CA 94538",
-  },
+  address: { street: "47215 Lakeview Blvd", cityStateZip: "Fremont, CA 94538" },
   contact: {
     phone: "(510) 657-0102",
     fax: "(510) 657-0151",
     website: "www.cytekbio.com",
-    supportEmail: "technical.support@cytekbio.com",
+    email: "technical.support@cytekbio.com",
   },
-  logo: {
-    fileName: "cytek-logo.png",
-    aspectRatio: 431 / 1505,
-  },
-  quoteBullets: [
-    "-All prices in USD",
+  logo: { dataUrl: CYTEK_LOGO_DATA_URL, aspectRatio: 431 / 1505 },
+  quoteBullets: ["-All prices in USD",
     "-The above quotation does not include any applicable sales tax.",
     "-Cytek will confirm order receipt and estimated ship date.",
-    "-This quote is valid for 60 days.",
-  ],
-  documentTitles: {
-    termsTitle: "GENERAL TERMS AND CONDITIONS OF SALE",
-    termsSubtitle: "(TIME AND MATERIALS)",
-  },
+    "-This quote is valid for 60 days.",],
   termsAndConditions: {
     title: "GENERAL TERMS AND CONDITIONS OF SALE",
     subtitle: "(TIME AND MATERIALS)",
@@ -94,9 +87,7 @@ export const cytekConfig: CompanyConfig = {
       },
     ],
   },
-  pdfTheme: {
-    tableHeaderBackground: "#E8E8E8",
+  pdfTheme: {tableHeaderBackground: "#E8E8E8",
     textColor: "#000000",
-    borderColor: "#000000",
-  },
+    borderColor: "#000000",},
 };

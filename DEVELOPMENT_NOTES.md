@@ -1,10 +1,10 @@
 # Development Notes
 
-Internal notes for engineers working on Quote Magic. For setup/run instructions, see `README.md`.
+Internal notes for engineers working on Evans Quote Generator. For setup/run instructions, see `README.md`.
 
 ## Architecture Overview
 
-Quote Magic is a pnpm-workspace monorepo with two deployable services and a set of shared library packages:
+Evans Quote Generator is a pnpm-workspace monorepo with two deployable services and a set of shared library packages:
 
 ```
 ┌─────────────────────────┐        ┌──────────────────────────┐
@@ -14,14 +14,14 @@ Quote Magic is a pnpm-workspace monorepo with two deployable services and a set 
 └─────────────────────────┘        └──────────────────────────┘
               │                                  │
               ▼                                  ▼
-   lib/api-client-react              lib/config, artifacts/api-server/src/data-sources
-   (generated React Query hooks,          (company config, Data Source:
-    typed from lib/api-spec)                normalized assets + pricing, logo)
+   lib/api-client-react              artifacts/api-server/src/data-sources
+   (generated React Query hooks,          (Data Sources: normalized assets +
+    typed from lib/api-spec)                pricing, each with a Quote Profile)
 ```
 
 - The **frontend** (`artifacts/quoting-tool`) is a static single-page app with three routes: `/` (Create a Quote: pick a Data Source, or an onboarding card when none exist), `/quote/:id` (Manual Quote scoped to that source) and `/data-sources` (source management, the only place workbooks are uploaded). It calls the API server's JSON endpoints and downloads a PDF blob from `/api/quotes/generate`.
 - The **backend** (`artifacts/api-server`) owns all data (the Data Source, see below) and all document generation (PDFKit). It is stateless — nothing is persisted between requests.
-- **`lib/config`** is imported by both services and is the single source of truth for anything company-specific: name, address, contact info, logo, contract language, quote footer bullets, document titles, and PDF colors. See "Configuration System" below.
+- **Quote Profiles** hold everything seller-specific (name, address, contact info, logo, contract language, notes, PDF colors), one per Data Source, stored with the source. The application itself has no seller identity. See "Quote Profiles" below.
 - **`lib/api-spec` → `lib/api-zod` / `lib/api-client-react`**: the API surface is defined once in `lib/api-spec/openapi.yaml` and code-generated into a typed React Query client (`lib/api-client-react`) and Zod schemas (`lib/api-zod`). Do not hand-edit files under `src/generated/` in either package — re-run `pnpm --filter @workspace/api-spec run codegen`.
 - **`lib/db`** is a Drizzle ORM + Postgres scaffold that exists but is **not currently used** by any route. It's reserved for future persistence (quote history, user accounts). See "Known Limitations".
 
@@ -54,26 +54,15 @@ The main form. Owns client-side validation (Zod + React Hook Form), live total c
 ### `artifacts/quoting-tool/src/pages/`
 `home.tsx` (source picker / onboarding), `quote.tsx` (Manual Quote for `/quote/:id`; remounts `QuoteForm` keyed by source id so switching sources restarts the quote) and `data-sources.tsx` (management). `components/AppHeader.tsx` is the shared header. The former per-quote "FSE Input" upload UI was removed from the quoting path; its server endpoint (`POST /api/quotes/parse-upload`, `lib/fseUploadParser.ts`) remains, unused by the UI.
 
-## Configuration System
+## Quote Profiles (seller identity per Data Source)
 
-`lib/config/src/types.ts` defines `CompanyConfig` — everything the app needs to know about a company:
+`artifacts/api-server/src/data-sources/quote-profile.ts` defines `QuoteProfile`: company name and short name, address, contact (phone, fax, website, email), logo (a PNG/JPEG data URL plus height/width ratio, ≤ 1.5 MB), notes printed under the line items, terms & conditions (title, subtitle, intro, sections) and PDF colors. It also holds `normalizeQuoteProfile` (coerces/validates untrusted input), `quoteProfileStatus` (the required fields: company name, street, city/state/ZIP, phone, email; logo and terms are optional) and `footerLines`.
 
-- `legalName`, `shortName`
-- `address` (street, city/state/zip)
-- `contact` (phone, fax, website, support email)
-- `logo` (filename + aspect ratio)
-- `quoteBullets` (footer bullet points under the quote table)
-- `documentTitles` (terms & conditions title/subtitle)
-- `termsAndConditions` (intro paragraph + numbered sections — the actual contract language)
-- `pdfTheme` (table header background, text color, border color)
+Profiles are stored **separately from the source data** (`DataSourceStore.getProfile/setProfile`; `quote_profiles` table, `<id>.profile.json`, or the memory map), so replacing a workbook never touches them; deleting a source deletes its profile. A new source has **no** profile: `POST /api/quotes/generate` answers 400 with the missing fields, and the UI shows a "Quote Profile incomplete" badge and disables Generate, until the profile is saved (`PUT /api/data-sources/{id}/profile`). There is no application-wide fallback identity.
 
-`lib/config/src/companies/cytek.ts` implements this for Cytek Biosciences, with content copied verbatim from the original hardcoded values so PDF output is byte-for-byte unchanged after the refactor. `lib/config/src/index.ts` exports `activeCompany` (selected via the `COMPANY_ID` env var, defaulting to `cytek`) and a `getFooterLines()` helper that formats the two-line PDF footer from the structured address/contact fields.
+`routes/quotes.ts` resolves the request's `dataSource` (default source when omitted), loads that source's profile and renders from it only: logo bytes or the short name as text in the header (`pdf.ts` `HeaderLogo`), footer lines, bullets, colors, and the terms pages (skipped when the profile has no terms). The application shell (`components/AppHeader.tsx`) is a neutral text identity, "EVANS / QUOTE GENERATOR"; no seller branding exists outside a profile.
 
-**To onboard a new company today:** add `lib/config/src/companies/<id>.ts` implementing `CompanyConfig`, register it in the `companies` map in `lib/config/src/index.ts`, drop its logo file into both `artifacts/api-server/src/data/` and `artifacts/quoting-tool/public/`, and set `COMPANY_ID=<id>` when starting both services. No other code changes needed.
-
-`lib/config` is bundled into **both** the Node API server and the browser frontend. `process` doesn't exist in the browser, so `src/index.ts` guards its env var read with `typeof process === "undefined"` rather than accessing `process.env` directly — keep that guard if you add more environment-driven config here.
-
-The logo image itself and the on-screen Tailwind color theme (`artifacts/quoting-tool/src/index.css`) are **not yet** driven by `CompanyConfig` — see Known Limitations.
+The Cytek values formerly in `lib/config` now live in `data-sources/cytek/profile.ts` (with the logo in `cytek/logo-data.ts`) and are seeded with the "Cytek — Current" source. `lib/config` is gone.
 
 ## Quote Generation Pipeline
 
@@ -81,8 +70,8 @@ The logo image itself and the on-screen Tailwind color theme (`artifacts/quoting
 2. Frontend calls `POST /api/quotes/generate` with a `QuoteRequest` JSON body (customer info, serial number, service line, parts array, shipping, notes).
 3. `routes/quotes.ts` validates the body is a JSON object, builds a flat `allItems` array (service line first, if present, then parts), applies quote-specific discounts (`discountPercent` per line and `serviceDiscountPercent`; an explicit `netPrice` wins) and computes extended prices from the net price and totals.
 4. A `PDFDocument` is created and piped directly to the HTTP response (`res`) — the PDF is never written to disk.
-5. Page 1 (and any overflow pages) render the customer block (customer, facility, address, then `Instrument:` and `Serial Number:` lines), quote number box, line-item table (List Price = catalog price, Net Price printed only when a discount applies, Ext. Price = qty × net), totals, notes, and standard bullet points, using `lib/pdf.ts` drawing helpers and `activeCompany` for all text/branding.
-6. A new page starts the terms & conditions document: title/subtitle from `activeCompany.documentTitles`, then the intro paragraph and numbered sections from `activeCompany.termsAndConditions`, paginating automatically via `ensureSpace()`/`newTCPage()`.
+5. Page 1 (and any overflow pages) render the customer block (customer, facility, address, then `Instrument:` and `Serial Number:` lines), quote number box, line-item table (List Price = catalog price, Net Price printed only when a discount applies, Ext. Price = qty × net), totals, notes, and standard bullet points, using `lib/pdf.ts` drawing helpers and the source's Quote Profile for all text/branding.
+6. If the profile has terms, a new page starts the terms & conditions document: title/subtitle, then the intro paragraph and numbered sections from the profile, paginating automatically via `ensureSpace()`/`newTCPage()`.
 7. `doc.end()` finalizes the PDF stream; the client receives it as a downloadable blob.
 
 ## Document Generation Pipeline (PDF Internals)
@@ -91,7 +80,7 @@ The logo image itself and the on-screen Tailwind color theme (`artifacts/quoting
 - A 7-column table (`TC` constants in `pdf.ts`) is drawn cell-by-cell with `cellBorder()` — there's no table library involved, every border and text cell is manually positioned.
 - Page breaks are computed manually: before adding a row, the code checks whether it fits above the footer line (`FOOTER_Y`) and calls `doc.addPage()` + re-draws the header/table header if not.
 - The terms & conditions renderer measures text height with `doc.heightOfString()` before drawing, to decide whether a section needs a new page.
-- Colors, fonts, and logo are all parameters sourced from `CompanyConfig` at the top of `quotes.ts` (`TEXT_COLOR`, `BORDER_COLOR`, `HEADER_BG`, `LOGO_PATH`) rather than being hardcoded inside `pdf.ts`.
+- Colors, logo and footer are parameters taken from the source's Quote Profile per request in `quotes.ts` (`TEXT_COLOR`, `BORDER_COLOR`, `HEADER_BG`, `LOGO`, `FOOTER_LINES`) rather than being hardcoded inside `pdf.ts`.
 
 ## Workspace Package Resolution — Don't Add TS Project References to `artifacts/*`
 
@@ -116,7 +105,7 @@ This monorepo's `lib/*` packages resolve via `"exports": { ".": "./src/index.ts"
 - `buildCommand: pnpm run build:vercel` builds the static frontend (`artifacts/quoting-tool/dist/public`, used as `outputDirectory`) and the API bundles via esbuild. `build:vercel` deliberately skips `pnpm run typecheck` so a type error can't block a deploy; typechecking still runs in the regular `pnpm run build`.
 - `artifacts/api-server/src/vercel.ts` re-exports the Express `app` without `.listen()`; `build.ts` bundles it to `dist/vercel.cjs` (plain CJS, `module.exports = app`).
 - `api/index.js` (repo root) is a one-line shim: `module.exports = require("../artifacts/api-server/dist/vercel.cjs")`. It exists because Vercel only builds Serverless Functions from files under a top-level `api/` directory — a `functions` entry in `vercel.json` pointing anywhere else is rejected with *"The pattern ... doesn't match any Serverless Functions inside the `api` directory"*. Vercel runs `buildCommand` before it traces `api/` functions, so the required `dist/vercel.cjs` exists by then. `@vercel/node` detects the export has `.listen` (i.e. it's an Express app) and passes it the raw Node request/response, so multer uploads and the streamed PDF response behave exactly as on a normal server.
-- `functions["api/index.js"].includeFiles: "artifacts/api-server/src/data/**"` ships the logo. It keeps its repo-relative path inside the function and `process.cwd()` is the function root, so the `process.cwd()`-based lookup in `pdf.ts` resolves unchanged. The asset/pricing JSON is compiled into the bundle and needs no file inclusion. `pdfkit`'s `.afm` font data is picked up automatically by Vercel's file tracer.
+- The function needs no `includeFiles`: seed data, the Cytek logo and everything else are compiled into the bundle. `pdfkit`'s `.afm` font data is picked up automatically by Vercel's file tracer.
 - `rewrites` send `/api/*` to the function (Vercel preserves the original URL, so `app.use("/api", router)` still matches) and everything else to `index.html` for the SPA router.
 - `artifacts/quoting-tool/vite.config.ts` only requires `PORT` for the dev/preview server and defaults `BASE_PATH` to `/`, so `vite build` runs on Vercel with no env vars set.
 
@@ -126,19 +115,18 @@ This monorepo's `lib/*` packages resolve via `"exports": { ".": "./src/index.ts"
 
 - **Tests are server-side only.** `pnpm --filter @workspace/api-server test` (Node's built-in runner via `tsx`) covers the Cytek import, the data source provider, the lookup endpoints, the upload parser and — most importantly — golden-text regression tests for the generated PDFs (`src/routes/quotes.golden.test.ts`, fixtures in `src/routes/__fixtures__/`; regenerate deliberately with `UPDATE_GOLDEN=1`). The React form has no automated tests.
 - **No persistence.** Generated quotes are not saved anywhere; there is no quote history, audit log, or way to regenerate a past quote.
-- **Single active company per process.** `COMPANY_ID` is read once at module load — switching companies requires restarting both services, not a per-request/per-tenant decision. True multi-tenancy (e.g. resolving the company from the request's subdomain or an authenticated account) is not implemented.
 - **No authentication/authorization.** Any client that can reach the API can generate quotes or look up asset/pricing data.
 - **Uploaded Data Sources need `DATABASE_URL` to persist** on serverless hosts. The Data Sources page warns when storage is memory-only.
 - **Workbook layout is fixed.** Uploads must use the Cytek Quoting Tool sheet/column names; a header-mapping step for arbitrary workbooks is the next step for non-Cytek sources.
 - **No authentication.** Anyone with the URL can add, replace or delete data sources, including the seeded Cytek one. Add a shared secret or login before exposing the Data Sources page widely.
 - **Rev6 lacks address/contact columns.** Facility code, address and contact for the 7,093 Rev6-only instruments are blank (facility defaults to the account name) until Cytek provides an export that includes them.
-- **Logo assets are duplicated by hand.** Each company needs its logo file placed in two locations (`api-server/src/data/` for the PDF, `quoting-tool/public/` for the UI) — there's no single asset pipeline.
+- **Logos live in the profile.** Uploaded as a data URL and stored with the profile; the UI previews it via `GET /api/data-sources/{id}/logo`.
 - **`lib/db` is unused scaffolding.** It builds and typechecks but nothing imports it; it's a placeholder for future persistence work, not active infrastructure.
 - **`artifacts/mockup-sandbox`** is a Replit-managed component preview/design tool declared in `.replit`. It is not part of the shipped product and has no `[services.production]` block — it exists purely to help iterate on UI components inside the Replit IDE.
 
 ## Recommended Future Enhancements
 
-1. **Per-request company resolution** — replace the module-level `activeCompany` with a lookup keyed by subdomain, API key, or authenticated account, enabling true multi-tenant deployment from a single running process.
+1. **Access control** — the Data Sources and Quote Profile pages have no login; add one before the URL circulates widely.
 2. **Persist generated quotes** — wire up `lib/db`, add a `quotes` table, and record each generated quote (customer, line items, total, PDF, timestamp) for history/audit and re-download.
 3. **Authentication** — gate quote generation and catalog access behind login, scoped to a company/account.
 4. **Automated tests** — start with `fseUploadParser.ts` (pure functions, easy to unit test with fixture workbooks) and a snapshot/structural test of PDF generation (e.g. asserting page count and extracted text via `pdf-parse`).

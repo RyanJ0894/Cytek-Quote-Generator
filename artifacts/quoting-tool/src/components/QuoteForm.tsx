@@ -6,8 +6,9 @@ import { motion, AnimatePresence } from "framer-motion";
 import { 
   Building2, User, MapPin, Search, 
   Settings2, Plus, Trash2, FileText, 
-  FileBox, Calculator, Loader2
+  FileBox, Calculator, Loader2, AlertTriangle
 } from "lucide-react";
+import { Link } from "wouter";
 
 import { cn, formatCurrency } from "@/lib/utils";
 import { Autocomplete } from "./Autocomplete";
@@ -234,17 +235,23 @@ export function QuoteForm({ dataSourceId, sources, onSwitch }: QuoteFormProps) {
         });
       },
       onError: (err: any) => {
+        const serverMessage = err?.data?.error;
         toast({
           variant: "destructive",
           title: "Failed to generate quote",
-          description: err.message || "An unexpected error occurred.",
+          description: serverMessage || err.message || "An unexpected error occurred.",
         });
       }
     }
   });
 
+  // Documents are branded by this source's own Quote Profile; until it is
+  // complete the server refuses to generate, so say so up front.
+  const profileReady = dataSource?.quoteProfile.complete ?? false;
+
   const onSubmit = (data: QuoteFormValues) => {
     const payload: QuoteRequest = {
+      dataSource: dataSourceId,
       customerName: data.customerName,
       accountName: data.accountName,
       facilityName: data.facilityName,
@@ -712,9 +719,18 @@ export function QuoteForm({ dataSourceId, sources, onSwitch }: QuoteFormProps) {
                 </span>
               </div>
 
+              {dataSource && !profileReady && (
+                <div className="mb-4 flex gap-2 items-start text-xs bg-amber-50 border border-amber-200 text-amber-900 rounded-lg p-3" data-testid="profile-incomplete">
+                  <AlertTriangle className="w-4 h-4 flex-shrink-0 mt-0.5" />
+                  <div>
+                    The Quote Profile for <strong>{dataSource.name}</strong> is incomplete (missing: {dataSource.quoteProfile.missing.join(", ")}), so documents cannot be generated yet.{" "}
+                    <Link href={`/data-sources/${encodeURIComponent(dataSource.id)}/profile`} className="underline font-semibold">Edit Quote Profile</Link>
+                  </div>
+                </div>
+              )}
               <button
                 type="submit"
-                disabled={generateMutation.isPending}
+                disabled={generateMutation.isPending || !profileReady}
                 className="w-full py-4 rounded-xl font-bold text-lg bg-gradient-to-r from-primary to-blue-500 text-white shadow-lg shadow-primary/25 hover:shadow-xl hover:shadow-primary/40 hover:-translate-y-0.5 active:translate-y-0 transition-all duration-200 flex items-center justify-center disabled:opacity-70 disabled:cursor-not-allowed disabled:transform-none"
               >
                 {generateMutation.isPending ? (

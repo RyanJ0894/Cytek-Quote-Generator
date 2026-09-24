@@ -1,6 +1,7 @@
 import { Router, type IRouter, type Request, type Response } from "express";
 import PDFDocument from "pdfkit";
-import { activeCompany, getFooterLines } from "@workspace/config";
+import { DataSourceError, getDataSourceService } from "../data-sources/service.js";
+import { footerLines, logoBuffer, quoteProfileStatus } from "../data-sources/quote-profile.js";
 import {
   FONT_BOLD,
   FONT_REG,
@@ -16,18 +17,12 @@ import {
   drawQuoteNumBox,
   fmtDate,
   fmtMoney,
-  resolveLogoPath,
   tableHeader,
   tableRow,
   tableTotals,
 } from "../lib/pdf.js";
 
 const router: IRouter = Router();
-
-const LOGO_PATH = resolveLogoPath(activeCompany.logo.fileName);
-const FOOTER_LINES = getFooterLines(activeCompany);
-const { textColor: TEXT_COLOR, borderColor: BORDER_COLOR, tableHeaderBackground: HEADER_BG } =
-  activeCompany.pdfTheme;
 
 interface QuoteLineItem {
   description: string;
@@ -42,6 +37,8 @@ interface QuoteLineItem {
 }
 
 interface QuoteRequest {
+  /** Data source whose Quote Profile brands the document; the default source when omitted. */
+  dataSource?: string;
   customerName: string;
   accountName?: string;
   facilityName?: string;
@@ -79,7 +76,7 @@ export function lineNetPrice(item: { unitPrice: number; discountPercent?: number
 }
 
 // ── Route handler ────────────────────────────────────────────────────────
-router.post("/generate", (req: Request, res: Response) => {
+router.post("/generate", async (req: Request, res: Response) => {
   try {
     if (!isQuoteRequest(req.body)) {
       res.status(400).json({ error: "Request body must be a JSON object." });
@@ -87,6 +84,26 @@ router.post("/generate", (req: Request, res: Response) => {
     }
 
     const data = req.body;
+
+    // Branding comes from the active data source's Quote Profile — never
+    // from another source and never from an application-wide default.
+    const service = getDataSourceService();
+    const source = await service.resolve(typeof data.dataSource === "string" ? data.dataSource : undefined);
+    const profile = await service.getProfile(source.id);
+    const status = quoteProfileStatus(profile);
+    if (!profile || !status.complete) {
+      res.status(400).json({
+        error: `The Quote Profile for "${source.name}" is incomplete (missing: ${status.missing.join(", ")}). Complete it on the Data Sources page before generating quotes.`,
+        missing: status.missing,
+      });
+      return;
+    }
+    const LOGO = profile.logo
+      ? { image: logoBuffer(profile.logo), aspectRatio: profile.logo.aspectRatio }
+      : { text: profile.shortName || profile.companyName };
+    const FOOTER_LINES = footerLines(profile);
+    const { textColor: TEXT_COLOR, borderColor: BORDER_COLOR, tableHeaderBackground: HEADER_BG } = profile.pdfTheme;
+
     const parts = Array.isArray(data.parts) ? data.parts : [];
     const dateStr = fmtDate();
     const quoteNum = `Q-${Date.now().toString().slice(-8)}`;
@@ -110,7 +127,7 @@ router.post("/generate", (req: Request, res: Response) => {
     // ═══════════════════════════════════════════════════════════════
 
     // ── Logo (top-left) + date (top-right) ──────────────────────
-    let y = drawPageHeader(doc, dateStr, LOGO_PATH, activeCompany.logo.aspectRatio, TEXT_COLOR);
+    let y = drawPageHeader(doc, dateStr, LOGO, TEXT_COLOR);
 
     // ── Customer block (left) ────────────────────────────────────
     const customerTopY = y; // save for QUOTE# box alignment
@@ -192,7 +209,7 @@ router.post("/generate", (req: Request, res: Response) => {
         if (y + ROW_H > FOOTER_Y - 60) {
           drawFooter(doc, FOOTER_LINES, TEXT_COLOR, BORDER_COLOR);
           doc.addPage({ margin: 0, size: "LETTER" });
-          y = drawPageHeader(doc, dateStr, LOGO_PATH, activeCompany.logo.aspectRatio, TEXT_COLOR, quoteNum);
+          y = drawPageHeader(doc, dateStr, LOGO, TEXT_COLOR, quoteNum);
           tableHeader(doc, y, TEXT_COLOR, BORDER_COLOR, HEADER_BG);
           y += HDR_H;
         }
@@ -241,7 +258,7 @@ router.post("/generate", (req: Request, res: Response) => {
 
     // ── Standard bullet points ────────────────────────────────────
     doc.font(FONT_REG).fontSize(9).fillColor(TEXT_COLOR);
-    for (const b of activeCompany.quoteBullets) {
+    for (const b of profile.quoteBullets) {
       doc.text(b, ML, y, { width: MR - ML });
       y += 13;
     }
@@ -249,15 +266,18 @@ router.post("/generate", (req: Request, res: Response) => {
     drawFooter(doc, FOOTER_LINES, TEXT_COLOR, BORDER_COLOR);
 
     // ═══════════════════════════════════════════════════════════════
-    // PAGE 2+ — TERMS AND CONDITIONS
+    // PAGE 2+ — TERMS AND CONDITIONS (only when the profile has any)
     // ═══════════════════════════════════════════════════════════════
+    const { title: termsTitle, subtitle: termsSubtitle, intro: termsIntro, sections: termsSections } =
+      profile.termsAndConditions;
+    if (!termsIntro && termsSections.length === 0) {
+      doc.end();
+      return;
+    }
     doc.addPage({ margin: 0, size: "LETTER" });
 
-    const { title: termsTitle, subtitle: termsSubtitle, intro: termsIntro, sections: termsSections } =
-      activeCompany.termsAndConditions;
-
     // First T&C page: logo + date + QUOTE# box
-    let ty = drawPageHeader(doc, dateStr, LOGO_PATH, activeCompany.logo.aspectRatio, TEXT_COLOR, quoteNum);
+    let ty = drawPageHeader(doc, dateStr, LOGO, TEXT_COLOR, quoteNum);
 
     // T&C title (centered)
     doc.font(FONT_BOLD).fontSize(11).fillColor(TEXT_COLOR)
@@ -272,7 +292,7 @@ router.post("/generate", (req: Request, res: Response) => {
       drawFooter(doc, FOOTER_LINES, TEXT_COLOR, BORDER_COLOR);
       doc.addPage({ margin: 0, size: "LETTER" });
       // Logo + date + QUOTE# box on every T&C continuation page
-      ty = drawPageHeader(doc, dateStr, LOGO_PATH, activeCompany.logo.aspectRatio, TEXT_COLOR, quoteNum);
+      ty = drawPageHeader(doc, dateStr, LOGO, TEXT_COLOR, quoteNum);
     };
 
     // Helper: ensure space or break page
@@ -322,6 +342,10 @@ router.post("/generate", (req: Request, res: Response) => {
     doc.end();
 
   } catch (err) {
+    if (err instanceof DataSourceError && !res.headersSent) {
+      res.status(err.status).json({ error: err.message });
+      return;
+    }
     console.error("Error generating quote PDF:", err);
     if (!res.headersSent) {
       res.status(500).json({ error: "Failed to generate PDF. Please check your input and try again." });

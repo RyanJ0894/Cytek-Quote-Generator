@@ -35,10 +35,26 @@ export interface AssetData {
   installDate?: string;
 }
 
+/**
+ * Seller identity status for a data source, without the logo data.
+ */
+export interface QuoteProfileSummary {
+  companyName: string;
+  shortName: string;
+  addressLine: string;
+  phone: string;
+  email: string;
+  website: string;
+  hasLogo: boolean;
+  complete: boolean;
+  missing: string[];
+}
+
 export interface DataSourceSummary {
   id: string;
   name: string;
   isDefault: boolean;
+  quoteProfile: QuoteProfileSummary;
   importedAt: string;
   /** Last time the source was created or its workbook replaced. */
   updatedAt: string;
@@ -46,6 +62,63 @@ export interface DataSourceSummary {
   assetCount: number;
   productCount: number;
   unpricedProductCount: number;
+}
+
+export interface QuoteProfileLogo {
+  /** data:image/png;base64,... or data:image/jpeg;base64,... (max 1.5 MB) */
+  dataUrl: string;
+  /** height divided by width */
+  aspectRatio: number;
+}
+
+export interface TermsSection {
+  heading: string;
+  body: string;
+}
+
+export type QuoteProfileAddress = {
+  street: string;
+  cityStateZip: string;
+};
+
+export type QuoteProfileContact = {
+  phone: string;
+  fax: string;
+  website: string;
+  email: string;
+};
+
+export type QuoteProfileTermsAndConditions = {
+  title: string;
+  subtitle: string;
+  intro: string;
+  sections: TermsSection[];
+};
+
+export type QuoteProfilePdfTheme = {
+  tableHeaderBackground: string;
+  textColor: string;
+  borderColor: string;
+};
+
+/**
+ * Seller identity and document branding for one data source.
+ */
+export interface QuoteProfile {
+  companyName: string;
+  shortName: string;
+  address: QuoteProfileAddress;
+  contact: QuoteProfileContact;
+  logo: QuoteProfileLogo | null;
+  quoteBullets: string[];
+  termsAndConditions: QuoteProfileTermsAndConditions;
+  pdfTheme: QuoteProfilePdfTheme;
+}
+
+export interface QuoteProfileResult {
+  profile: QuoteProfile | null;
+  complete: boolean;
+  missing: string[];
 }
 
 export interface DataSourceListing {
@@ -96,6 +169,8 @@ export interface QuoteLineItem {
 }
 
 export interface QuoteRequest {
+  /** Data source whose Quote Profile brands the document (and whose catalog the quote was built from). */
+  dataSource?: string;
   customerName: string;
   accountName?: string;
   facilityName?: string;

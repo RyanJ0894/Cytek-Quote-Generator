@@ -1,5 +1,6 @@
 import { DEFAULT_SOURCE_KEY, type DataSourceStore, type StoredDataSourceHeader, type StoreKind } from "./store.js";
 import type { DataSourceManifest, NormalizedAsset, NormalizedProduct, StoredDataSource } from "./types.js";
+import type { QuoteProfile } from "./quote-profile.js";
 
 /**
  * The minimal Postgres client surface the store needs. Both `pg.Pool`
@@ -56,6 +57,11 @@ export class PgDataSourceStore implements DataSourceStore {
           key text PRIMARY KEY,
           value text NOT NULL
         )`);
+        await this.client.query(`CREATE TABLE IF NOT EXISTS quote_profiles (
+          data_source_id text PRIMARY KEY,
+          profile jsonb NOT NULL,
+          updated_at timestamptz NOT NULL DEFAULT now()
+        )`);
       })().catch((err) => {
         this.ready = null;
         throw err;
@@ -109,8 +115,29 @@ export class PgDataSourceStore implements DataSourceStore {
   async delete(id: string): Promise<boolean> {
     await this.ensureSchema();
     const { rows } = await this.client.query(`DELETE FROM data_sources WHERE id = $1 RETURNING id`, [id]);
+    await this.client.query(`DELETE FROM quote_profiles WHERE data_source_id = $1`, [id]);
     if (rows.length && (await this.getSetting(DEFAULT_SOURCE_KEY)) === id) await this.setSetting(DEFAULT_SOURCE_KEY, null);
     return rows.length > 0;
+  }
+
+  async getProfile(id: string): Promise<QuoteProfile | null> {
+    await this.ensureSchema();
+    const { rows } = await this.client.query(`SELECT profile FROM quote_profiles WHERE data_source_id = $1`, [id]);
+    const r = rows[0] as { profile: unknown } | undefined;
+    return r ? json<QuoteProfile>(r.profile) : null;
+  }
+
+  async setProfile(id: string, profile: QuoteProfile | null): Promise<void> {
+    await this.ensureSchema();
+    if (profile === null) {
+      await this.client.query(`DELETE FROM quote_profiles WHERE data_source_id = $1`, [id]);
+      return;
+    }
+    await this.client.query(
+      `INSERT INTO quote_profiles (data_source_id, profile, updated_at) VALUES ($1, $2::jsonb, now())
+       ON CONFLICT (data_source_id) DO UPDATE SET profile = EXCLUDED.profile, updated_at = now()`,
+      [id, JSON.stringify(profile)],
+    );
   }
 
   async getSetting(key: string): Promise<string | null> {

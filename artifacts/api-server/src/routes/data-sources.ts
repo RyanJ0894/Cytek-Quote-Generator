@@ -1,6 +1,7 @@
 import { Router, type IRouter, type Request, type Response, type NextFunction } from "express";
 import multer, { MulterError } from "multer";
 import { DataSourceError, getDataSourceService } from "../data-sources/service.js";
+import { logoBuffer, quoteProfileStatus } from "../data-sources/quote-profile.js";
 
 const MAX_UPLOAD_BYTES = 20 * 1024 * 1024;
 const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: MAX_UPLOAD_BYTES } });
@@ -83,6 +84,42 @@ router.post("/:id/replace", workbookUpload, async (req, res) => {
     res.json(summary);
   } catch (err) {
     handle(err, res, "replacing the data source");
+  }
+});
+
+/** The seller identity/branding for a source (null until set up) plus what is still missing. */
+router.get("/:id/profile", async (req, res) => {
+  try {
+    const profile = await getDataSourceService().getProfile(paramId(req));
+    res.json({ profile, ...quoteProfileStatus(profile) });
+  } catch (err) {
+    handle(err, res, "loading the quote profile");
+  }
+});
+
+router.put("/:id/profile", async (req, res) => {
+  try {
+    const profile = await getDataSourceService().setProfile(paramId(req), req.body);
+    res.json({ profile, ...quoteProfileStatus(profile) });
+  } catch (err) {
+    handle(err, res, "saving the quote profile");
+  }
+});
+
+/** The profile's logo as an image, for previews. */
+router.get("/:id/logo", async (req, res) => {
+  try {
+    const profile = await getDataSourceService().getProfile(paramId(req));
+    if (!profile?.logo) {
+      res.status(404).json({ error: "This data source has no logo." });
+      return;
+    }
+    const mime = profile.logo.dataUrl.slice(5, profile.logo.dataUrl.indexOf(";"));
+    res.setHeader("Content-Type", mime);
+    res.setHeader("Cache-Control", "no-cache");
+    res.send(logoBuffer(profile.logo));
+  } catch (err) {
+    handle(err, res, "loading the logo");
   }
 });
 

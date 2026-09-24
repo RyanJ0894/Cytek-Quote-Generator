@@ -2,6 +2,7 @@ import { existsSync, mkdirSync, readdirSync, readFileSync, rmSync, statSync, wri
 import path from "node:path";
 import { DEFAULT_SOURCE_KEY, type DataSourceStore, type StoredDataSourceHeader, type StoreKind } from "./store.js";
 import type { StoredDataSource } from "./types.js";
+import type { QuoteProfile } from "./quote-profile.js";
 
 const SETTINGS_FILE = "_settings.json";
 
@@ -23,6 +24,10 @@ export class FileDataSourceStore implements DataSourceStore {
     return path.join(this.dir, `${id}.json`);
   }
 
+  private profileFile(id: string) {
+    return this.file(id).replace(/\.json$/, ".profile.json");
+  }
+
   private readSettings(): Record<string, string> {
     const p = path.join(this.dir, SETTINGS_FILE);
     if (!existsSync(p)) return {};
@@ -39,7 +44,7 @@ export class FileDataSourceStore implements DataSourceStore {
 
   async list(): Promise<StoredDataSourceHeader[]> {
     return readdirSync(this.dir)
-      .filter((f) => f.endsWith(".json") && f !== SETTINGS_FILE)
+      .filter((f) => f.endsWith(".json") && !f.endsWith(".profile.json") && f !== SETTINGS_FILE)
       .map((f) => {
         const rec = JSON.parse(readFileSync(path.join(this.dir, f), "utf8")) as StoredDataSource;
         return { id: rec.id, name: rec.name, manifest: rec.manifest, updatedAt: rec.updatedAt };
@@ -75,8 +80,26 @@ export class FileDataSourceStore implements DataSourceStore {
     const p = this.file(id);
     if (!existsSync(p)) return false;
     rmSync(p);
+    rmSync(this.profileFile(id), { force: true });
     if ((await this.getSetting(DEFAULT_SOURCE_KEY)) === id) await this.setSetting(DEFAULT_SOURCE_KEY, null);
     return true;
+  }
+
+  async getProfile(id: string) {
+    const p = this.profileFile(id);
+    if (!existsSync(p)) return null;
+    return JSON.parse(readFileSync(p, "utf8")) as QuoteProfile;
+  }
+
+  async setProfile(id: string, profile: QuoteProfile | null) {
+    const p = this.profileFile(id);
+    if (profile === null) {
+      rmSync(p, { force: true });
+      return;
+    }
+    const tmp = `${p}.tmp`;
+    writeFileSync(tmp, JSON.stringify(profile));
+    renameSync(tmp, p);
   }
 
   async getSetting(key: string) {

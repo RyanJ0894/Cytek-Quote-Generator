@@ -6,12 +6,17 @@
   "outputDirectory": "artifacts/quoting-tool/dist/public",
   "functions": {
     "api/index.js": {
-      "includeFiles": "artifacts/api-server/src/data/**",
       "maxDuration": 30
     }
   },
   "rewrites": [
-    { "source": "/api/(.*)", "destination": "/api/index" },
-    { "source": "/((?!api/).*)", "destination": "/index.html" }
+    {
+      "source": "/api/(.*)",
+      "destination": "/api/index"
+    },
+    {
+      "source": "/((?!api/).*)",
+      "destination": "/index.html"
+    }
   ]
 }

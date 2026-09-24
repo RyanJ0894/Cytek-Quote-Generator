@@ -15,7 +15,6 @@
     "@radix-ui/react-tooltip": "^1.2.0",
     "@tanstack/react-query": "catalog:",
     "@workspace/api-client-react": "workspace:*",
-    "@workspace/config": "workspace:*",
     "class-variance-authority": "catalog:",
     "clsx": "catalog:",
     "framer-motion": "catalog:",

@@ -109,6 +109,12 @@ export const ListPartsResponse = zod.object({
  * @summary Generate a PDF quote
  */
 export const GenerateQuoteBody = zod.object({
+  dataSource: zod
+    .string()
+    .optional()
+    .describe(
+      "Data source whose Quote Profile brands the document (and whose catalog the quote was built from).",
+    ),
   customerName: zod.string(),
   accountName: zod.string().optional(),
   facilityName: zod.string().optional(),
