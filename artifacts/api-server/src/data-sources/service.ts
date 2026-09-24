@@ -1,22 +1,23 @@
 /**
  * DataSourceService: the one place routes go to for data sources.
  *
- * It merges the built-in sources compiled into the server (today: Cytek) with
- * the user-managed sources kept in a DataSourceStore, resolves which one is
- * the default, caches indexed sources in memory (invalidated by the store's
- * version stamp) and performs imports/replacements/deletions.
+ * Every data source is one persistent, isolated Source of Truth held in a
+ * DataSourceStore. On first start the service seeds the store with the data
+ * compiled into the server (Cytek); from then on that source is ordinary.
+ * The service resolves the default, caches indexed sources in memory
+ * (invalidated by the store's version stamp) and performs imports,
+ * replacements and deletions.
  */
 import { createHash } from "node:crypto";
 import xlsx from "xlsx";
 import pg from "pg";
-import { activeCompany } from "@workspace/config";
-import type { DataSource, DataSourceSummary, StoredDataSource } from "./types.js";
+import type { DataSource, DataSourceSummary, SeedDataSource, StoredDataSource } from "./types.js";
 import { createStaticDataSource } from "./static-source.js";
 import { importWorkbook } from "./workbook-importer.js";
-import { MemoryDataSourceStore, type DataSourceStore } from "./store.js";
+import { DEFAULT_SOURCE_KEY, MemoryDataSourceStore, type DataSourceStore, type StoredDataSourceHeader } from "./store.js";
 import { FileDataSourceStore } from "./file-store.js";
 import { PgDataSourceStore } from "./pg-store.js";
-import { cytekDataSource } from "./cytek/index.js";
+import { cytekSeed } from "./cytek/index.js";
 
 export class DataSourceError extends Error {
   constructor(
@@ -35,8 +36,9 @@ export interface WorkbookUpload {
 
 export interface DataSourceListing {
   dataSources: DataSourceSummary[];
-  defaultId: string;
-  /** false when uploaded sources will not survive a restart (no storage configured). */
+  /** null when no data source exists yet. */
+  defaultId: string | null;
+  /** false when data sources will not survive a restart (no storage configured). */
   persistent: boolean;
   storeKind: DataSourceStore["kind"];
 }
@@ -50,70 +52,95 @@ export function slugify(name: string): string {
   return slug || "data-source";
 }
 
+const seededKey = (id: string) => `seeded:${id}`;
+
 export class DataSourceService {
   private readonly cache = new Map<string, { version: string; ds: DataSource }>();
-  private readonly builtIns: Map<string, DataSource>;
+  private seeding: Promise<void> | null = null;
 
   constructor(
     readonly store: DataSourceStore,
-    builtIns: DataSource[],
-    private readonly fallbackDefaultId: string,
-  ) {
-    this.builtIns = new Map(builtIns.map((b) => [b.id, b]));
-    if (!this.builtIns.has(fallbackDefaultId)) {
-      throw new Error(`Fallback default data source "${fallbackDefaultId}" is not built in`);
+    private readonly seeds: SeedDataSource[] = [],
+  ) {}
+
+  /**
+   * Saves each seed into the store once. A marker records that seeding
+   * happened, so a seed the user later deletes does not come back.
+   */
+  private ensureSeeded(): Promise<void> {
+    if (!this.seeding) {
+      this.seeding = (async () => {
+        for (const seed of this.seeds) {
+          if (await this.store.getSetting(seededKey(seed.id))) continue;
+          if ((await this.store.getVersion(seed.id)) === null) {
+            await this.store.put(seed);
+            await this.adoptAsDefaultIfNone(seed.id);
+          }
+          await this.store.setSetting(seededKey(seed.id), new Date().toISOString());
+        }
+      })().catch((err) => {
+        this.seeding = null;
+        throw err;
+      });
     }
+    return this.seeding;
   }
 
-  isBuiltIn(id: string): boolean {
-    return this.builtIns.has(id);
+  private async headers(): Promise<StoredDataSourceHeader[]> {
+    await this.ensureSeeded();
+    const all = await this.store.list();
+    return all.sort((a, b) => a.name.localeCompare(b.name));
   }
 
-  async getDefaultId(): Promise<string> {
-    const stored = await this.store.getDefaultId();
-    if (stored && (this.builtIns.has(stored) || (await this.store.getVersion(stored)) !== null)) return stored;
-    return this.fallbackDefaultId;
+  /** The first source ever added becomes the default until the user changes it. */
+  private async adoptAsDefaultIfNone(id: string): Promise<void> {
+    if (!(await this.store.getSetting(DEFAULT_SOURCE_KEY))) await this.store.setSetting(DEFAULT_SOURCE_KEY, id);
   }
 
-  private summarize(ds: DataSource, defaultId: string): DataSourceSummary {
+  /**
+   * The explicit default if it still exists; otherwise (e.g. it was deleted)
+   * the first remaining source by name; null when there are none.
+   */
+  async getDefaultId(): Promise<string | null> {
+    const all = await this.headers();
+    if (all.length === 0) return null;
+    const stored = await this.store.getSetting(DEFAULT_SOURCE_KEY);
+    if (stored && all.some((h) => h.id === stored)) return stored;
+    return all[0].id;
+  }
+
+  private summarize(h: StoredDataSourceHeader, defaultId: string | null): DataSourceSummary {
     return {
-      id: ds.id,
-      name: ds.name,
-      isDefault: ds.id === defaultId,
-      builtIn: this.builtIns.has(ds.id),
-      importedAt: ds.manifest.importedAt,
-      sourceFiles: ds.manifest.sources.map((s) => s.label),
-      assetCount: ds.manifest.counts.assets,
-      productCount: ds.manifest.counts.products,
-      unpricedProductCount: ds.manifest.counts.unpricedProducts,
+      id: h.id,
+      name: h.name,
+      isDefault: h.id === defaultId,
+      importedAt: h.manifest.importedAt,
+      updatedAt: h.updatedAt,
+      sourceFiles: h.manifest.sources.map((s) => s.label),
+      assetCount: h.manifest.counts.assets,
+      productCount: h.manifest.counts.products,
+      unpricedProductCount: h.manifest.counts.unpricedProducts,
     };
   }
 
   async list(): Promise<DataSourceListing> {
+    const all = await this.headers();
     const defaultId = await this.getDefaultId();
-    const stored = await this.store.list();
-    const summaries: DataSourceSummary[] = [
-      ...[...this.builtIns.values()].map((b) => this.summarize(b, defaultId)),
-      ...stored.map((h) => ({
-        id: h.id,
-        name: h.name,
-        isDefault: h.id === defaultId,
-        builtIn: false,
-        importedAt: h.manifest.importedAt,
-        sourceFiles: h.manifest.sources.map((s) => s.label),
-        assetCount: h.manifest.counts.assets,
-        productCount: h.manifest.counts.products,
-        unpricedProductCount: h.manifest.counts.unpricedProducts,
-      })),
-    ];
-    return { dataSources: summaries, defaultId, persistent: this.store.persistent, storeKind: this.store.kind };
+    const dataSources = all
+      .map((h) => this.summarize(h, defaultId))
+      .sort((a, b) => Number(b.isDefault) - Number(a.isDefault) || a.name.localeCompare(b.name));
+    return { dataSources, defaultId, persistent: this.store.persistent, storeKind: this.store.kind };
   }
 
-  /** Resolves a data source by id, or the default when no id is given. */
+  /**
+   * Resolves one data source by id (or the default when no id is given).
+   * Lookups only ever run against the resolved source: sources are never
+   * merged or cross-referenced.
+   */
   async resolve(id?: string): Promise<DataSource> {
+    await this.ensureSeeded();
     const wanted = id?.trim() || (await this.getDefaultId());
-    const builtIn = this.builtIns.get(wanted);
-    if (builtIn) return builtIn;
+    if (!wanted) throw new DataSourceError(404, "No data sources configured. Add one on the Data Sources page.");
 
     const version = await this.store.getVersion(wanted);
     if (version === null) throw new DataSourceError(404, `Unknown data source: ${wanted}`);
@@ -122,20 +149,22 @@ export class DataSourceService {
 
     const record = await this.store.get(wanted);
     if (!record) throw new DataSourceError(404, `Unknown data source: ${wanted}`);
-    const ds = createStaticDataSource({ manifest: record.manifest, assets: record.assets, products: record.products });
+    const ds = createStaticDataSource({ manifest: record.manifest, assets: record.assets, products: record.products, name: record.name });
     this.cache.set(wanted, { version: record.updatedAt, ds });
     return ds;
   }
 
   async summary(id?: string): Promise<DataSourceSummary> {
     const ds = await this.resolve(id);
-    return this.summarize(ds, await this.getDefaultId());
+    const header = (await this.headers()).find((h) => h.id === ds.id);
+    if (!header) throw new DataSourceError(404, `Unknown data source: ${ds.id}`);
+    return this.summarize(header, await this.getDefaultId());
   }
 
   private async uniqueId(name: string): Promise<string> {
     const base = slugify(name);
     let candidate = base;
-    for (let i = 2; this.builtIns.has(candidate) || (await this.store.getVersion(candidate)) !== null; i++) {
+    for (let i = 2; (await this.store.getVersion(candidate)) !== null; i++) {
       candidate = `${base}-${i}`;
     }
     return candidate;
@@ -163,22 +192,22 @@ export class DataSourceService {
     }
   }
 
-  /** Creates a new stored data source from an uploaded workbook. */
+  /** Creates a new data source from an uploaded workbook (the one-time import). */
   async importFromWorkbook(name: string, upload: WorkbookUpload, opts: { now?: Date } = {}): Promise<DataSourceSummary> {
+    await this.ensureSeeded();
     const trimmed = name.trim();
     if (!trimmed) throw new DataSourceError(400, "A data source name is required.");
     const id = await this.uniqueId(trimmed);
     const result = this.parseWorkbook(upload, id, trimmed, opts.now);
     await this.store.put({ id, name: trimmed, manifest: result.manifest, assets: result.assets, products: result.products });
+    await this.adoptAsDefaultIfNone(id);
     this.cache.delete(id);
     return this.summary(id);
   }
 
-  /** Re-imports an existing stored data source from a newer workbook, keeping its id and name. */
+  /** Re-imports an existing data source from a newer workbook, keeping its id and name. */
   async replaceWorkbook(id: string, upload: WorkbookUpload, opts: { now?: Date } = {}): Promise<DataSourceSummary> {
-    if (this.builtIns.has(id)) {
-      throw new DataSourceError(400, `"${id}" is built into the application and cannot be replaced; add a new data source instead.`);
-    }
+    await this.ensureSeeded();
     const existing = await this.store.get(id);
     if (!existing) throw new DataSourceError(404, `Unknown data source: ${id}`);
     const result = this.parseWorkbook(upload, id, existing.name, opts.now);
@@ -188,17 +217,14 @@ export class DataSourceService {
   }
 
   async setDefault(id: string): Promise<string> {
-    if (!this.builtIns.has(id) && (await this.store.getVersion(id)) === null) {
-      throw new DataSourceError(404, `Unknown data source: ${id}`);
-    }
-    await this.store.setDefaultId(id);
+    await this.ensureSeeded();
+    if ((await this.store.getVersion(id)) === null) throw new DataSourceError(404, `Unknown data source: ${id}`);
+    await this.store.setSetting(DEFAULT_SOURCE_KEY, id);
     return id;
   }
 
   async delete(id: string): Promise<void> {
-    if (this.builtIns.has(id)) {
-      throw new DataSourceError(400, `"${id}" is built into the application and cannot be deleted.`);
-    }
+    await this.ensureSeeded();
     const existed = await this.store.delete(id);
     if (!existed) throw new DataSourceError(404, `Unknown data source: ${id}`);
     this.cache.delete(id);
@@ -206,6 +232,7 @@ export class DataSourceService {
 
   /** Test helper: the raw stored record, if any. */
   async getStored(id: string): Promise<StoredDataSource | null> {
+    await this.ensureSeeded();
     return this.store.get(id);
   }
 }
@@ -216,7 +243,7 @@ function createStoreFromEnv(): DataSourceStore {
   const dir = process.env["DATA_SOURCES_DIR"];
   if (dir) return new FileDataSourceStore(dir);
   console.warn(
-    "[data-sources] No DATABASE_URL or DATA_SOURCES_DIR configured: uploaded data sources will not persist across restarts.",
+    "[data-sources] No DATABASE_URL or DATA_SOURCES_DIR configured: data sources you add will not persist across restarts (the seeded Cytek source is re-created on every start).",
   );
   return new MemoryDataSourceStore();
 }
@@ -225,9 +252,7 @@ let singleton: DataSourceService | null = null;
 
 /** The application-wide service, configured from the environment on first use. */
 export function getDataSourceService(): DataSourceService {
-  if (!singleton) {
-    singleton = new DataSourceService(createStoreFromEnv(), [cytekDataSource], activeCompany.dataSourceId ?? cytekDataSource.id);
-  }
+  if (!singleton) singleton = new DataSourceService(createStoreFromEnv(), [cytekSeed]);
   return singleton;
 }
 

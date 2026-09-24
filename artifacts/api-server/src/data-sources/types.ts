@@ -6,9 +6,10 @@
  * style workbook) into these normalized records. Manual Mode and the API only
  * ever see these types; workbook parsing lives in workbook-importer.ts.
  *
- * Sources come from two places: built-in ones compiled into the server
- * (./cytek) and ones a user uploaded, kept in a DataSourceStore (./store.ts).
- * Both implement the same DataSource interface.
+ * Every source lives in a DataSourceStore (./store.ts) as one persistent,
+ * isolated dataset. The Cytek data compiled into the server (./cytek) is only
+ * a seed: it is saved into the store on first start and from then on is an
+ * ordinary source the user can update, replace or delete.
  */
 
 export interface NormalizedAsset {
@@ -117,13 +118,16 @@ export interface StoredDataSource {
   updatedAt: string;
 }
 
+/** Data compiled into the server that is saved into the store on first start. */
+export type SeedDataSource = Omit<StoredDataSource, "updatedAt">;
+
 export interface DataSourceSummary {
   id: string;
   name: string;
   isDefault: boolean;
-  /** Compiled into the server; cannot be deleted or replaced from the UI. */
-  builtIn: boolean;
   importedAt: string;
+  /** Last time the source was created or its workbook replaced. */
+  updatedAt: string;
   sourceFiles: string[];
   assetCount: number;
   productCount: number;

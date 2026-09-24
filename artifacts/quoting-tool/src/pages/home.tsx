@@ -1,120 +1,96 @@
-import React, { useState } from "react";
-import { QuoteForm } from "@/components/QuoteForm";
-import { ExcelUpload, type ParsedUploadResult } from "@/components/ExcelUpload";
-import { Sparkles, ArrowLeft, Database } from "lucide-react";
+import React from "react";
 import { Link } from "wouter";
-import { motion, AnimatePresence } from "framer-motion";
-import { activeCompany } from "@workspace/config";
+import { motion } from "framer-motion";
+import { Database, ChevronRight, Star, Loader2, PlusCircle } from "lucide-react";
+import { useListDataSources } from "@workspace/api-client-react";
+import { AppHeader, PageShell } from "@/components/AppHeader";
 
-type AppStep = "upload" | "form";
-
+/**
+ * Home: "Create a Quote" by picking the saved Data Source to quote from.
+ * Selecting one goes straight into Manual Quote for that source. Uploading
+ * workbooks is a maintenance task that lives on the Data Sources page only.
+ */
 export default function Home() {
-  const [step, setStep] = useState<AppStep>("upload");
-  const [parsedData, setParsedData] = useState<ParsedUploadResult | null>(null);
-
-  const handleParsed = (result: ParsedUploadResult) => {
-    setParsedData(result);
-    setStep("form");
-  };
-
-  const handleSkip = () => {
-    setParsedData(null);
-    setStep("form");
-  };
-
-  const handleReset = () => {
-    setParsedData(null);
-    setStep("upload");
-  };
+  const { data, isLoading, error } = useListDataSources();
+  const sources = data?.dataSources ?? [];
 
   return (
-    <div className="min-h-screen bg-slate-50 bg-[radial-gradient(ellipse_at_top_right,_var(--tw-gradient-stops))] from-blue-100/40 via-slate-50 to-slate-50">
-      {/* Header */}
-      <header className="bg-white/80 backdrop-blur-md border-b border-slate-200 sticky top-0 z-40">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="flex items-center justify-between h-16">
-            <img
-              src={`/${activeCompany.logo.fileName}`}
-              alt={`${activeCompany.shortName} Quote Generator`}
-              className="h-10 w-auto object-contain"
-            />
+    <PageShell>
+      <AppHeader />
+      <main className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 py-10">
+        {isLoading && (
+          <div className="flex items-center justify-center gap-2 py-20 text-muted-foreground text-sm">
+            <Loader2 className="w-5 h-5 animate-spin" /> Loading data sources…
+          </div>
+        )}
 
-            <div className="flex items-center gap-3">
+        {error && (
+          <div className="bg-destructive/5 border border-destructive/30 text-destructive rounded-2xl p-6 text-sm">
+            Could not load data sources. Refresh the page or check the server.
+          </div>
+        )}
+
+        {data && sources.length === 0 && (
+          <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} className="max-w-xl mx-auto text-center">
+            <div className="bg-card rounded-2xl border border-border shadow-xl shadow-slate-200/50 p-10">
+              <div className="w-16 h-16 mx-auto rounded-2xl bg-primary/10 flex items-center justify-center text-primary mb-5">
+                <Database className="w-8 h-8" />
+              </div>
+              <h2 className="text-2xl font-bold text-slate-900 font-display mb-2">No Data Sources Yet</h2>
+              <p className="text-slate-500 mb-6">Add your first Source of Truth to start creating quotes. Upload the workbook once; quotes never need it again.</p>
               <Link
                 href="/data-sources"
-                className="hidden sm:flex items-center gap-2 px-3 py-1.5 text-sm font-medium text-slate-600 hover:text-slate-900 hover:bg-slate-100 rounded-lg transition-colors"
-                title="Manage the asset and pricing data used by Manual Mode"
+                className="inline-flex items-center gap-2 py-3 px-6 rounded-xl font-bold text-sm bg-gradient-to-r from-primary to-blue-500 text-white shadow-lg shadow-primary/25 hover:shadow-xl hover:-translate-y-0.5 transition-all"
               >
-                <Database className="w-4 h-4" /> Data Sources
+                <PlusCircle className="w-4 h-4" /> Add Data Source
               </Link>
-              {step === "form" && (
-                <button
-                  onClick={handleReset}
-                  className="flex items-center gap-1.5 text-sm font-medium text-slate-500 hover:text-slate-900 transition-colors px-3 py-1.5 rounded-lg hover:bg-slate-100"
-                >
-                  <ArrowLeft className="w-4 h-4" />
-                  Upload New File
-                </button>
-              )}
-              <div className="flex items-center gap-2 text-sm font-medium text-slate-500 bg-slate-100 px-3 py-1.5 rounded-full border border-slate-200">
-                <Sparkles className="w-4 h-4 text-amber-500" />
-                FSE Portal
-              </div>
             </div>
-          </div>
-        </div>
-      </header>
-      {/* Main Content */}
-      <main className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 py-10">
-        <AnimatePresence mode="wait">
-          {step === "upload" ? (
-            <motion.div
-              key="upload"
-              initial={{ opacity: 0, y: 16 }}
-              animate={{ opacity: 1, y: 0 }}
-              exit={{ opacity: 0, y: -16 }}
-              transition={{ duration: 0.25 }}
-            >
-              <div className="mb-8 text-center">
-                <h2 className="text-3xl font-bold text-slate-900 font-display mb-2">
-                  Start with Your Excel File
-                </h2>
-                <p className="text-slate-500 max-w-xl mx-auto">Upload your Excel spreadsheet — the app reads every tab and fills in all the fields automatically. You can edit anything before generating the PDF.</p>
-              </div>
-              <ExcelUpload onParsed={handleParsed} onSkip={handleSkip} />
-            </motion.div>
-          ) : (
-            <motion.div
-              key="form"
-              initial={{ opacity: 0, y: 16 }}
-              animate={{ opacity: 1, y: 0 }}
-              exit={{ opacity: 0, y: -16 }}
-              transition={{ duration: 0.25 }}
-            >
-              <div className="mb-8">
-                <div className="flex items-center gap-3 mb-2">
-                  <h2 className="text-3xl font-bold text-slate-900 font-display">
-                    {parsedData ? "Review & Edit Quote" : "Create New Quote"}
-                  </h2>
-                  {parsedData && (
-                    <span className="inline-flex items-center px-3 py-1 rounded-full text-xs font-semibold bg-emerald-100 text-emerald-800 border border-emerald-200">
-                      ✓ Populated from Excel
-                    </span>
-                  )}
-                </div>
-                <p className="text-slate-500">
-                  {parsedData
-                    ? "All fields have been filled from your spreadsheet. Review and edit as needed, then generate your PDF."
-                    : "Fill in customer and service details, then generate a PDF quote."}
-                </p>
-              </div>
+          </motion.div>
+        )}
 
-              <QuoteForm parsedData={parsedData} />
-            </motion.div>
-          )}
-        </AnimatePresence>
+        {data && sources.length > 0 && (
+          <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }}>
+            <div className="text-center mb-8">
+              <h2 className="text-3xl font-bold text-slate-900 font-display mb-2">Create a Quote</h2>
+              <p className="text-slate-500">Select the Data Source you want to use.</p>
+            </div>
+
+            <ul className="grid grid-cols-1 gap-4 max-w-2xl mx-auto" data-testid="source-picker">
+              {sources.map((ds) => (
+                <li key={ds.id}>
+                  <Link
+                    href={`/quote/${encodeURIComponent(ds.id)}`}
+                    className="group flex items-center gap-4 bg-card rounded-2xl border border-border shadow-lg shadow-slate-200/50 px-6 py-5 hover:border-primary/50 hover:shadow-xl hover:-translate-y-0.5 transition-all"
+                    data-testid={`pick-${ds.id}`}
+                  >
+                    <div className="w-12 h-12 rounded-xl bg-primary/10 flex items-center justify-center text-primary flex-shrink-0">
+                      <Database className="w-6 h-6" />
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <span className="text-lg font-bold text-slate-900">{ds.name}</span>
+                        {ds.isDefault && (
+                          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-semibold bg-emerald-100 text-emerald-800">
+                            <Star className="w-3 h-3" /> Default
+                          </span>
+                        )}
+                      </div>
+                      <p className="text-sm text-muted-foreground">
+                        {ds.assetCount.toLocaleString()} assets · {ds.productCount.toLocaleString()} products · updated {new Date(ds.updatedAt).toLocaleDateString()}
+                      </p>
+                    </div>
+                    <ChevronRight className="w-5 h-5 text-slate-400 group-hover:text-primary transition-colors flex-shrink-0" />
+                  </Link>
+                </li>
+              ))}
+            </ul>
+
+            <p className="text-center text-xs text-muted-foreground mt-8">
+              Need to add or update a source? Use <Link href="/data-sources" className="underline underline-offset-2 hover:text-slate-700">Data Sources</Link>.
+            </p>
+          </motion.div>
+        )}
       </main>
-    </div>
+    </PageShell>
   );
 }
-

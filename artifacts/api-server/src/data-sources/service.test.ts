@@ -1,6 +1,7 @@
 /**
- * DataSourceService + the three stores, exercised with the real Rev6
- * workbook: import once, look up, switch default, replace, delete.
+ * DataSourceService + the three stores, exercised with the real Cytek
+ * workbooks: seed on first start, import once, look up, switch default,
+ * replace, delete down to the zero state, and persistence across instances.
  */
 import { test, describe, after } from "node:test";
 import assert from "node:assert/strict";
@@ -13,7 +14,7 @@ import { DataSourceError, DataSourceService, slugify } from "./service.js";
 import { MemoryDataSourceStore, type DataSourceStore } from "./store.js";
 import { FileDataSourceStore } from "./file-store.js";
 import { PgDataSourceStore } from "./pg-store.js";
-import { cytekDataSource } from "./cytek/index.js";
+import { cytekSeed } from "./cytek/index.js";
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const REV6 = readFileSync(path.join(here, "cytek", "source", "cytek-quoting-tool-rev6.xlsx"));
@@ -25,76 +26,76 @@ test("slugify makes safe ids", () => {
 });
 
 async function exerciseService(store: DataSourceStore) {
-  const svc = new DataSourceService(store, [cytekDataSource], "cytek");
+  const svc = new DataSourceService(store, [cytekSeed]);
 
-  // Initial state: only the built-in source, which is the default.
+  // First start: the seed is saved into the store and is the default.
   let listing = await svc.list();
-  assert.deepEqual(listing.dataSources.map((d) => [d.id, d.isDefault, d.builtIn]), [["cytek", true, true]]);
+  assert.deepEqual(listing.dataSources.map((d) => [d.id, d.name, d.isDefault]), [["cytek", "Cytek — Current", true]]);
   assert.equal(listing.defaultId, "cytek");
-  assert.equal((await svc.resolve()).id, "cytek");
+  assert.equal((await svc.resolve()).listSerials().length, 9635);
+  assert.equal((await svc.resolve()).lookupAsset("U1399")?.facilityName, "RGON", "seed keeps the Rev5 facility codes");
 
-  // Import Rev6 as a new source (one-time upload).
-  const created = await svc.importFromWorkbook("Cytek Test", { buffer: REV6, fileName: "Cytek Quoting Tool - Rev6.xlsx" });
-  assert.equal(created.id, "cytek-test");
-  assert.equal(created.builtIn, false);
-  assert.equal(created.assetCount, 9635);
-  assert.equal(created.productCount, 5419);
-  assert.equal(created.unpricedProductCount, 239);
+  // One-time upload of a second, isolated source (Rev5 data as "Company B").
+  const created = await svc.importFromWorkbook("Company B", { buffer: REV5, fileName: "company-b.xlsx" });
+  assert.equal(created.id, "company-b");
+  assert.equal(created.assetCount, 3585);
   assert.equal(created.isDefault, false);
-  assert.deepEqual(created.sourceFiles, ["Cytek Quoting Tool - Rev6.xlsx"]);
 
-  // It is queryable by id without any further upload.
-  const ds = await svc.resolve("cytek-test");
-  assert.equal(ds.listSerials().length, 9635);
-  const u1399 = ds.lookupAsset("u1399")!;
-  assert.equal(u1399.accountName, "Ragon Institute of MGH MIT and Harvard");
-  assert.equal(u1399.facilityName, "Ragon Institute of MGH MIT and Harvard", "no Rev5 supplement for uploaded sources");
-  assert.equal(ds.lookupAsset("NE0006")?.contractType, "Warranty");
-  assert.equal(ds.listProducts().find((p) => p.partNumber === "N0-00011")?.listPrice, 268.71);
-  assert.equal(ds.listServices().length, 164);
+  // Isolation: each source answers only from its own records.
+  const a = await svc.resolve("cytek");
+  const b = await svc.resolve("company-b");
+  assert.ok(a.lookupAsset("NE0006"), "Rev6-only serial in A");
+  assert.equal(b.lookupAsset("NE0006"), null, "…and not in B");
+  assert.ok(b.lookupAsset("8470060146"), "Rev5-only serial in B");
+  assert.equal(a.lookupAsset("8470060146"), null, "…and not in A");
+  assert.equal(a.listSerials().length + b.listSerials().length, 9635 + 3585);
 
-  // Same instance is served until the record changes (cache by version).
-  assert.equal(await svc.resolve("cytek-test"), ds);
+  // Cached until the record changes.
+  assert.equal(await svc.resolve("company-b"), b);
 
-  // Make it the default: unqualified lookups now use it.
-  await svc.setDefault("cytek-test");
+  // Default switching.
+  await svc.setDefault("company-b");
   listing = await svc.list();
-  assert.equal(listing.defaultId, "cytek-test");
-  assert.equal((await svc.resolve()).id, "cytek-test");
-  assert.equal(listing.dataSources.find((d) => d.id === "cytek")?.isDefault, false);
+  assert.equal(listing.defaultId, "company-b");
+  assert.equal(listing.dataSources[0].id, "company-b", "default is listed first");
+  assert.equal((await svc.resolve()).id, "company-b");
 
-  // Names collide -> distinct ids.
-  const second = await svc.importFromWorkbook("Cytek Test", { buffer: REV5, fileName: "rev5.xlsx" });
-  assert.equal(second.id, "cytek-test-2");
-  assert.equal(second.assetCount, 3585);
+  // Name collisions get distinct ids.
+  const second = await svc.importFromWorkbook("Company B", { buffer: REV6, fileName: "rev6.xlsx" });
+  assert.equal(second.id, "company-b-2");
 
-  // Replace the workbook of an uploaded source: id and name kept, data swapped, cache refreshed.
-  const replaced = await svc.replaceWorkbook("cytek-test", { buffer: REV5, fileName: "rev5.xlsx" });
-  assert.equal(replaced.id, "cytek-test");
-  assert.equal(replaced.name, "Cytek Test");
-  assert.equal(replaced.assetCount, 3585);
-  const after = await svc.resolve("cytek-test");
-  assert.notEqual(after, ds);
-  assert.equal(after.lookupAsset("U1399")?.facilityName, "RGON");
+  // Replace a source's workbook: id and name kept, data swapped, cache refreshed.
+  const replaced = await svc.replaceWorkbook("company-b", { buffer: REV6, fileName: "rev6.xlsx" });
+  assert.equal(replaced.name, "Company B");
+  assert.equal(replaced.assetCount, 9635);
+  const after = await svc.resolve("company-b");
+  assert.notEqual(after, b);
+  assert.ok(after.lookupAsset("NE0006"));
 
-  // Guard rails.
-  await assert.rejects(svc.delete("cytek"), (e: DataSourceError) => e.status === 400);
-  await assert.rejects(svc.replaceWorkbook("cytek", { buffer: REV6, fileName: "x.xlsx" }), (e: DataSourceError) => e.status === 400);
+  // The seeded source is an ordinary source: it can be replaced too.
+  const seedReplaced = await svc.replaceWorkbook("cytek", { buffer: REV5, fileName: "rev5.xlsx" });
+  assert.equal(seedReplaced.assetCount, 3585);
+
+  // Errors.
   await assert.rejects(svc.resolve("nope"), (e: DataSourceError) => e.status === 404);
   await assert.rejects(svc.setDefault("nope"), (e: DataSourceError) => e.status === 404);
+  await assert.rejects(svc.replaceWorkbook("nope", { buffer: REV6, fileName: "x.xlsx" }), (e: DataSourceError) => e.status === 404);
   await assert.rejects(svc.importFromWorkbook("", { buffer: REV6, fileName: "x.xlsx" }), (e: DataSourceError) => e.status === 400);
   await assert.rejects(
     svc.importFromWorkbook("Bad", { buffer: Buffer.from("not a workbook"), fileName: "bad.xlsx" }),
     (e: DataSourceError) => e.status === 400,
   );
 
-  // Delete the default -> default falls back to the built-in source.
-  await svc.delete("cytek-test");
-  await assert.rejects(svc.resolve("cytek-test"), (e: DataSourceError) => e.status === 404);
-  assert.equal((await svc.resolve()).id, "cytek");
-  await svc.delete("cytek-test-2");
+  // Delete everything: default falls back to whatever remains, then to none.
+  await svc.delete("company-b");
+  assert.equal((await svc.list()).defaultId, "company-b-2", "first remaining by name");
+  await svc.delete("company-b-2");
+  await svc.delete("cytek");
   listing = await svc.list();
-  assert.equal(listing.dataSources.length, 1);
+  assert.deepEqual(listing.dataSources, []);
+  assert.equal(listing.defaultId, null);
+  await assert.rejects(svc.resolve(), (e: DataSourceError) => e.status === 404 && /No data sources configured/.test(e.message));
+  await assert.rejects(svc.delete("cytek"), (e: DataSourceError) => e.status === 404);
   assert.equal(listing.persistent, store.persistent);
 }
 
@@ -103,15 +104,17 @@ describe("DataSourceService", () => {
     await exerciseService(new MemoryDataSourceStore());
   });
 
-  test("with the file store (survives a new store instance on the same directory)", async () => {
+  test("with the file store: data and the seeding marker persist across instances", async () => {
     const dir = mkdtempSync(path.join(os.tmpdir(), "ds-store-"));
     try {
       await exerciseService(new FileDataSourceStore(dir));
+      // The user deleted the seeded source above: a new instance must not bring it back.
+      const again = new DataSourceService(new FileDataSourceStore(dir), [cytekSeed]);
+      assert.deepEqual((await again.list()).dataSources, []);
       // Persistence check: write with one instance, read with another.
-      const a = new DataSourceService(new FileDataSourceStore(dir), [cytekDataSource], "cytek");
-      await a.importFromWorkbook("Persisted", { buffer: REV5, fileName: "rev5.xlsx" });
-      await a.setDefault("persisted");
-      const b = new DataSourceService(new FileDataSourceStore(dir), [cytekDataSource], "cytek");
+      await again.importFromWorkbook("Persisted", { buffer: REV5, fileName: "rev5.xlsx" });
+      await again.setDefault("persisted");
+      const b = new DataSourceService(new FileDataSourceStore(dir), [cytekSeed]);
       assert.equal((await b.resolve()).id, "persisted");
       assert.equal((await b.resolve()).listSerials().length, 3585);
     } finally {
@@ -123,14 +126,25 @@ describe("DataSourceService", () => {
     const pg = new PGlite();
     after(() => pg.close());
     await exerciseService(new PgDataSourceStore(pg));
-    // Persistence check across store instances sharing the database.
-    const a = new DataSourceService(new PgDataSourceStore(pg), [cytekDataSource], "cytek");
-    await a.importFromWorkbook("Persisted", { buffer: REV5, fileName: "rev5.xlsx" });
-    await a.setDefault("persisted");
-    const b = new DataSourceService(new PgDataSourceStore(pg), [cytekDataSource], "cytek");
+    const again = new DataSourceService(new PgDataSourceStore(pg), [cytekSeed]);
+    assert.deepEqual((await again.list()).dataSources, [], "deleted seed stays deleted");
+    await again.importFromWorkbook("Persisted", { buffer: REV5, fileName: "rev5.xlsx" });
+    await again.setDefault("persisted");
+    const b = new DataSourceService(new PgDataSourceStore(pg), [cytekSeed]);
     assert.equal((await b.resolve()).id, "persisted");
     assert.equal((await b.resolve()).lookupAsset("U0286")?.facilityName, "MSU");
     const rows = await pg.query<{ id: string; n: number }>("select id, jsonb_array_length(assets) as n from data_sources");
     assert.deepEqual(rows.rows, [{ id: "persisted", n: 3585 }]);
+    const settings = await pg.query<{ key: string }>("select key from app_settings order by key");
+    assert.deepEqual(settings.rows.map((r) => r.key), ["default_data_source_id", "seeded:cytek"]);
+  });
+
+  test("a fresh store seeds Cytek exactly once and keeps it on later starts", async () => {
+    const store = new MemoryDataSourceStore();
+    const a = new DataSourceService(store, [cytekSeed]);
+    assert.equal((await a.list()).dataSources.length, 1);
+    const b = new DataSourceService(store, [cytekSeed]);
+    assert.equal((await b.list()).dataSources.length, 1);
+    assert.equal((await b.resolve("cytek")).name, "Cytek — Current");
   });
 });

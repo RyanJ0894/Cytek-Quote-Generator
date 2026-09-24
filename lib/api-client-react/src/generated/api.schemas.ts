@@ -39,9 +39,9 @@ export interface DataSourceSummary {
   id: string;
   name: string;
   isDefault: boolean;
-  /** Compiled into the application; cannot be deleted or replaced from the UI. */
-  builtIn: boolean;
   importedAt: string;
+  /** Last time the source was created or its workbook replaced. */
+  updatedAt: string;
   sourceFiles: string[];
   assetCount: number;
   productCount: number;
@@ -50,8 +50,9 @@ export interface DataSourceSummary {
 
 export interface DataSourceListing {
   dataSources: DataSourceSummary[];
-  defaultId: string;
-  /** false when uploaded data sources will not survive a server restart. */
+  /** null when no data source exists yet. */
+  defaultId: string | null;
+  /** false when data sources will not survive a server restart. */
   persistent: boolean;
   /** memory, file or postgres. */
   storeKind: string;

@@ -28,15 +28,18 @@ export interface DataSourceStore {
   getVersion(id: string): Promise<string | null>;
   put(record: Omit<StoredDataSource, "updatedAt">): Promise<StoredDataSource>;
   delete(id: string): Promise<boolean>;
-  getDefaultId(): Promise<string | null>;
-  setDefaultId(id: string | null): Promise<void>;
+  /** Small key/value settings (default source id, seeding markers). */
+  getSetting(key: string): Promise<string | null>;
+  setSetting(key: string, value: string | null): Promise<void>;
 }
+
+export const DEFAULT_SOURCE_KEY = "default_data_source_id";
 
 export class MemoryDataSourceStore implements DataSourceStore {
   readonly kind: StoreKind = "memory";
   readonly persistent = false;
   private readonly records = new Map<string, StoredDataSource>();
-  private defaultId: string | null = null;
+  private readonly settings = new Map<string, string>();
 
   async list() {
     return [...this.records.values()].map(({ id, name, manifest, updatedAt }) => ({ id, name, manifest, updatedAt }));
@@ -54,13 +57,14 @@ export class MemoryDataSourceStore implements DataSourceStore {
   }
   async delete(id: string) {
     const existed = this.records.delete(id);
-    if (this.defaultId === id) this.defaultId = null;
+    if (this.settings.get(DEFAULT_SOURCE_KEY) === id) this.settings.delete(DEFAULT_SOURCE_KEY);
     return existed;
   }
-  async getDefaultId() {
-    return this.defaultId;
+  async getSetting(key: string) {
+    return this.settings.get(key) ?? null;
   }
-  async setDefaultId(id: string | null) {
-    this.defaultId = id;
+  async setSetting(key: string, value: string | null) {
+    if (value === null) this.settings.delete(key);
+    else this.settings.set(key, value);
   }
 }

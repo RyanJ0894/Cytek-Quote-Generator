@@ -18,19 +18,6 @@ tags:
   - name: data-sources
     description: The asset/pricing data source behind Manual Mode
 paths:
-  /data-source:
-    get:
-      operationId: getDataSource
-      tags: [data-sources]
-      summary: Describe the default data source (name, import date, record counts)
-      responses:
-        "200":
-          description: Data source summary
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/DataSourceSummary"
-
   /data-sources:
     get:
       operationId: listDataSources
@@ -309,11 +296,11 @@ components:
           type: string
         isDefault:
           type: boolean
-        builtIn:
-          type: boolean
-          description: Compiled into the application; cannot be deleted or replaced from the UI.
         importedAt:
           type: string
+        updatedAt:
+          type: string
+          description: Last time the source was created or its workbook replaced.
         sourceFiles:
           type: array
           items:
@@ -328,8 +315,8 @@ components:
         - id
         - name
         - isDefault
-        - builtIn
         - importedAt
+        - updatedAt
         - sourceFiles
         - assetCount
         - productCount
@@ -344,9 +331,11 @@ components:
             $ref: "#/components/schemas/DataSourceSummary"
         defaultId:
           type: string
+          nullable: true
+          description: null when no data source exists yet.
         persistent:
           type: boolean
-          description: false when uploaded data sources will not survive a server restart.
+          description: false when data sources will not survive a server restart.
         storeKind:
           type: string
           description: memory, file or postgres.

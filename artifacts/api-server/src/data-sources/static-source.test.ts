@@ -1,7 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { createStaticDataSource, deriveContractStatus } from "./static-source.js";
-import { cytekDataSource } from "./cytek/index.js";
+import { cytekSeed } from "./cytek/index.js";
 import type { DataSourceManifest } from "./types.js";
 
 const manifest: DataSourceManifest = {
@@ -54,10 +54,12 @@ test("serials are sorted and de-duplicated; services filtered by category", () =
   assert.deepEqual(ds.listServices().map((p) => p.partName), ["Visit"]);
 });
 
-test("the built-in Cytek source exposes the imported counts", () => {
-  assert.equal(cytekDataSource.id, "cytek");
-  assert.equal(cytekDataSource.listSerials().length, 9635);
-  assert.equal(cytekDataSource.listProducts().length, 5419);
-  assert.equal(cytekDataSource.listServices().length, 164);
-  assert.equal(cytekDataSource.manifest.sources.map((s) => s.label).join(" + "), "Cytek Quoting Tool - Rev6.xlsx + Cytek Quoting Tool - Rev5.xlsx");
+test("the seeded Cytek source exposes the imported counts", () => {
+  const cytek = createStaticDataSource({ manifest: cytekSeed.manifest, assets: cytekSeed.assets, products: cytekSeed.products, name: cytekSeed.name });
+  assert.equal(cytek.id, "cytek");
+  assert.equal(cytek.name, "Cytek — Current");
+  assert.equal(cytek.listSerials().length, 9635);
+  assert.equal(cytek.listProducts().length, 5419);
+  assert.equal(cytek.listServices().length, 164);
+  assert.equal(cytek.manifest.sources.map((s) => s.label).join(" + "), "Cytek Quoting Tool - Rev6.xlsx + Cytek Quoting Tool - Rev5.xlsx");
 });

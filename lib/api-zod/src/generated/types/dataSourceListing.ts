@@ -9,8 +9,9 @@ import type { DataSourceSummary } from "./dataSourceSummary";
 
 export interface DataSourceListing {
   dataSources: DataSourceSummary[];
-  defaultId: string;
-  /** false when uploaded data sources will not survive a server restart. */
+  /** null when no data source exists yet. */
+  defaultId: string | null;
+  /** false when data sources will not survive a server restart. */
   persistent: boolean;
   /** memory, file or postgres. */
   storeKind: string;
