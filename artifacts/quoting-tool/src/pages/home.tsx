@@ -50,10 +50,10 @@ export default function Home() {
 
         {data && sources.length > 0 && (
           <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }}>
-            <div className="text-center mb-8">
-              <h2 className="text-3xl font-bold text-foreground font-display mb-2">Create a Quote</h2>
-              <p className="text-muted-foreground">Select the Data Source you want to use.</p>
-            </div>
+            {/* One primary instruction: the sentence is the heading, with the action carrying the emphasis. */}
+            <h2 className="text-center text-xl sm:text-2xl font-medium tracking-tight text-foreground font-display mb-8 max-w-2xl mx-auto" data-testid="home-instruction">
+              Select the Data Source you want to use and <span className="font-bold text-primary whitespace-nowrap">Create a Quote</span>.
+            </h2>
 
             <ul className="grid grid-cols-1 gap-4 max-w-2xl mx-auto" data-testid="source-picker">
               {sources.map((ds) => (

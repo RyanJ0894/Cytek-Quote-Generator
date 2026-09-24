@@ -2,20 +2,19 @@
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
-    <meta name="color-scheme" content="light dark" />
+    <meta name="color-scheme" content="dark light" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1" />
     <title>Evans Quote Generator</title>
     <script>
-      // Apply the saved theme (or the OS preference) before anything renders so
-      // a returning Dark Mode user never sees a flash of Light Mode. Must use
-      // the same storage key as src/hooks/use-theme.ts.
+      // Apply the theme before anything renders so a returning user never sees
+      // a flash of the wrong theme. Dark Mode is the default; only an explicitly
+      // saved "light" choice selects Light Mode. Must use the same storage key
+      // as src/hooks/use-theme.ts.
       (function () {
-        try {
-          var saved = localStorage.getItem("eqg-theme");
-          var dark = saved === "dark" || (saved !== "light" && window.matchMedia("(prefers-color-scheme: dark)").matches);
-          if (dark) document.documentElement.classList.add("dark");
-          document.documentElement.style.colorScheme = dark ? "dark" : "light";
-        } catch (e) {}
+        var dark = true;
+        try { dark = localStorage.getItem("eqg-theme") !== "light"; } catch (e) {}
+        if (dark) document.documentElement.classList.add("dark");
+        document.documentElement.style.colorScheme = dark ? "dark" : "light";
       })();
     </script>
     <link rel="preconnect" href="https://fonts.googleapis.com">
