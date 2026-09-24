@@ -5,9 +5,10 @@
  *
  * Reads the source workbook(s) in ./source, runs the workbook importer and
  * writes the normalized assets.json / products.json / manifest.json next to
- * this file. Those generated files are compiled into the server; re-run this
- * (and commit the result) to update the built-in data. Users can also upload
- * a newer workbook as a new data source from the app's Data Sources page.
+ * this file. Those generated files are compiled into the server as the SEED
+ * data source, saved into the store on first start. Afterwards the user
+ * maintains it (update/replace/delete) from the app's Data Sources page, so
+ * re-running this only affects fresh installations.
  */
 import { createHash } from "node:crypto";
 import { existsSync, readFileSync, writeFileSync } from "node:fs";
@@ -17,7 +18,7 @@ import xlsx from "xlsx";
 import { importWorkbook } from "../workbook-importer.js";
 
 export const CYTEK_DATA_SOURCE_ID = "cytek";
-export const CYTEK_DATA_SOURCE_NAME = "Cytek";
+export const CYTEK_DATA_SOURCE_NAME = "Cytek — Current";
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const SOURCE_DIR = path.join(here, "source");

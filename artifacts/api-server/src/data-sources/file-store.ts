@@ -1,6 +1,6 @@
 import { existsSync, mkdirSync, readdirSync, readFileSync, rmSync, statSync, writeFileSync, renameSync, utimesSync } from "node:fs";
 import path from "node:path";
-import type { DataSourceStore, StoredDataSourceHeader, StoreKind } from "./store.js";
+import { DEFAULT_SOURCE_KEY, type DataSourceStore, type StoredDataSourceHeader, type StoreKind } from "./store.js";
 import type { StoredDataSource } from "./types.js";
 
 const SETTINGS_FILE = "_settings.json";
@@ -23,17 +23,17 @@ export class FileDataSourceStore implements DataSourceStore {
     return path.join(this.dir, `${id}.json`);
   }
 
-  private readSettings(): { defaultId: string | null } {
+  private readSettings(): Record<string, string> {
     const p = path.join(this.dir, SETTINGS_FILE);
-    if (!existsSync(p)) return { defaultId: null };
+    if (!existsSync(p)) return {};
     try {
       return JSON.parse(readFileSync(p, "utf8"));
     } catch {
-      return { defaultId: null };
+      return {};
     }
   }
 
-  private writeSettings(s: { defaultId: string | null }) {
+  private writeSettings(s: Record<string, string>) {
     writeFileSync(path.join(this.dir, SETTINGS_FILE), JSON.stringify(s));
   }
 
@@ -75,16 +75,18 @@ export class FileDataSourceStore implements DataSourceStore {
     const p = this.file(id);
     if (!existsSync(p)) return false;
     rmSync(p);
-    const s = this.readSettings();
-    if (s.defaultId === id) this.writeSettings({ defaultId: null });
+    if ((await this.getSetting(DEFAULT_SOURCE_KEY)) === id) await this.setSetting(DEFAULT_SOURCE_KEY, null);
     return true;
   }
 
-  async getDefaultId() {
-    return this.readSettings().defaultId;
+  async getSetting(key: string) {
+    return this.readSettings()[key] ?? null;
   }
 
-  async setDefaultId(id: string | null) {
-    this.writeSettings({ defaultId: id });
+  async setSetting(key: string, value: string | null) {
+    const s = this.readSettings();
+    if (value === null) delete s[key];
+    else s[key] = value;
+    this.writeSettings(s);
   }
 }

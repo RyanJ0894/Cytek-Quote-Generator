@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useEffect, useMemo } from "react";
 import { useForm, useFieldArray } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
@@ -12,7 +12,6 @@ import {
 import { cn, formatCurrency } from "@/lib/utils";
 import { Autocomplete } from "./Autocomplete";
 import { useToast } from "@/hooks/use-toast";
-import type { ParsedUploadResult } from "./ExcelUpload";
 
 import { 
   useListSerials, 
@@ -22,7 +21,7 @@ import {
   useListParts, 
   getListPartsQueryKey,
   useGenerateQuote,
-  useListDataSources,
+  type DataSourceSummary,
   type QuoteRequest,
   type PartItem
 } from "@workspace/api-client-react";
@@ -78,92 +77,25 @@ const LEGACY_SERVICE_TYPES = [
 ];
 
 interface QuoteFormProps {
-  parsedData?: ParsedUploadResult | null;
+  /** The Data Source every lookup in this form is scoped to. */
+  dataSourceId: string;
+  sources: DataSourceSummary[];
+  /** Called when the user confirms switching to another Data Source (the page remounts the form). */
+  onSwitch: (id: string) => void;
 }
 
-// Merge the two sections from parsed Excel: for "Service and Parts", service section drives
-// customer info and service items, parts section drives the parts list. For other types, use
-// whichever section has data.
-function buildInitialValues(parsed: ParsedUploadResult): Partial<QuoteFormValues> {
-  const qt = parsed.quoteType.toLowerCase();
-  const isPartsOnly = qt.includes("parts only") || qt === "parts";
-  const isServiceOnly = qt.includes("service only") || qt === "service";
-
-  const primary = isPartsOnly ? parsed.partsQuote : parsed.serviceQuote;
-  const secondary = isPartsOnly ? parsed.serviceQuote : parsed.partsQuote;
-
-  // Use primary section for customer info; fall back to secondary if primary is empty
-  const customerName = primary.customerName || secondary.customerName;
-  const serialNumber = primary.serialNumber || secondary.serialNumber;
-  const facilityName = primary.facilityName || secondary.facilityName;
-  const address = primary.address || secondary.address;
-  const contractType = primary.contractType || secondary.contractType;
-
-  // Service items come from service section (first part is treated as the service type)
-  const serviceParts = parsed.serviceQuote.parts;
-  const partsParts = parsed.partsQuote.parts;
-
-  // For "Service and Parts": first service item becomes the serviceType, rest + parts items = parts list
-  // For "Service Only": all service items in parts list
-  // For "Parts Only": all parts items in parts list
-  let serviceType = "";
-  let servicePrice = 0;
-  let partsList: Array<{ description: string; partNumber: string; quantity: number; unitPrice: number; discountPercent: number }> = [];
-
-  if (!isPartsOnly && serviceParts.length > 0) {
-    serviceType = serviceParts[0].name;
-    servicePrice = serviceParts[0].price;
-    // Remaining service items go into parts list
-    partsList = serviceParts.slice(1).map((p) => ({
-      description: p.name,
-      partNumber: p.partNumber,
-      quantity: p.quantity,
-      unitPrice: p.price,
-      discountPercent: 0,
-    }));
-  }
-
-  if (!isServiceOnly) {
-    const partsItems = partsParts.map((p) => ({
-      description: p.name,
-      partNumber: p.partNumber,
-      quantity: p.quantity,
-      unitPrice: p.price,
-      discountPercent: 0,
-    }));
-    partsList = [...partsList, ...partsItems];
-  }
-
-  return {
-    customerName,
-    serialNumber,
-    facilityName,
-    accountName: facilityName,
-    address,
-    contractType,
-    serviceType,
-    servicePrice,
-    parts: partsList,
-  };
-}
-
-export function QuoteForm({ parsedData }: QuoteFormProps) {
+export function QuoteForm({ dataSourceId, sources, onSwitch }: QuoteFormProps) {
   const { toast } = useToast();
-  
-  // Data source: the default one unless the user picks another (only offered
-  // when more than one is configured, so normal use has no extra step).
-  const { data: listing } = useListDataSources();
-  const [chosenDataSourceId, setChosenDataSourceId] = useState("");
-  const dataSourceId = chosenDataSourceId || listing?.defaultId || "";
-  const dataSource = listing?.dataSources.find((d) => d.id === dataSourceId);
-  const dsParams = dataSourceId ? { dataSource: dataSourceId } : undefined;
 
-  // Data Fetching (waits until the data source is known so nothing loads twice)
+  // Every lookup is scoped to this one Data Source; sources are never mixed.
+  const dataSource = sources.find((d) => d.id === dataSourceId);
+  const dsParams = { dataSource: dataSourceId };
+
   const { data: serialsData, isLoading: isLoadingSerials } = useListSerials(dsParams, {
-    query: { queryKey: getListSerialsQueryKey(dsParams), enabled: !!listing },
+    query: { queryKey: getListSerialsQueryKey(dsParams) },
   });
   const { data: partsData, isLoading: isLoadingParts } = useListParts(dsParams, {
-    query: { queryKey: getListPartsQueryKey(dsParams), enabled: !!listing },
+    query: { queryKey: getListPartsQueryKey(dsParams) },
   });
 
   // Services come from the data source ("Service" category: on-site support,
@@ -181,8 +113,6 @@ export function QuoteForm({ parsedData }: QuoteFormProps) {
     return [...fromCatalog, ...legacy];
   }, [partsData]);
 
-  const initialValues = parsedData ? buildInitialValues(parsedData) : {};
-  
   const form = useForm<QuoteFormValues>({
     resolver: zodResolver(quoteFormSchema),
     defaultValues: {
@@ -200,7 +130,6 @@ export function QuoteForm({ parsedData }: QuoteFormProps) {
       parts: [],
       shippingAndHandling: 0,
       notes: "",
-      ...initialValues,
     }
   });
 
@@ -216,19 +145,24 @@ export function QuoteForm({ parsedData }: QuoteFormProps) {
     {
       query: {
         queryKey: getLookupAssetQueryKey(lookupParams),
-        enabled: !!listing && !!serialNumber && serialNumber.length > 2,
+        enabled: !!serialNumber && serialNumber.length > 2,
         retry: false,
       },
     }
   );
 
-  // Switching data source starts the lookup over: clear the serial and
-  // everything it had populated so nothing from the other catalog lingers.
+  // Switching Data Source restarts the quote (the page remounts this form)
+  // so nothing populated from one catalog can mix with another. Ask first if
+  // the user has already entered anything.
+  const hasContent = () => {
+    const v = form.getValues();
+    return Boolean(v.serialNumber || v.customerName || v.serviceType || v.parts.length || v.notes);
+  };
   const switchDataSource = (id: string) => {
-    setChosenDataSourceId(id);
-    for (const f of ["serialNumber", "accountName", "facilityName", "address", "contractType", "contractStatus", "productName"] as const) {
-      setValue(f, "");
-    }
+    if (id === dataSourceId) return;
+    const target = sources.find((d) => d.id === id);
+    if (hasContent() && !window.confirm(`Switch to "${target?.name ?? id}"? This starts a new quote and clears everything entered so far.`)) return;
+    onSwitch(id);
   };
 
   /** Catalog record behind a form line, used to flag items the source has no price for. */
@@ -247,19 +181,6 @@ export function QuoteForm({ parsedData }: QuoteFormProps) {
   const productSecondary = (item: PartItem) =>
     `${item.partNumber || ""}${item.priced === false ? " · no list price" : ""}`.trim();
 
-  // When parsed data is provided, show a confirmation toast once
-  useEffect(() => {
-    if (parsedData) {
-      const qt = parsedData.quoteType || "Quote";
-      const totalParts = parsedData.serviceQuote.parts.length + parsedData.partsQuote.parts.length;
-      toast({
-        title: "Excel data loaded",
-        description: `${qt} — ${totalParts} line item${totalParts !== 1 ? "s" : ""} imported. All fields are editable.`,
-      });
-    }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
-
   // Serial-not-found hint: shown once the typed value can no longer match any
   // serial in the data source (so it does not flash while typing a prefix).
   const serialQuery = (serialNumber ?? "").trim().toLowerCase();
@@ -268,17 +189,15 @@ export function QuoteForm({ parsedData }: QuoteFormProps) {
     return serialsData.serials.some((s) => s.toLowerCase().includes(serialQuery));
   }, [serialsData, serialQuery]);
 
-  // Auto-fill fields from the asset lookup.
-  // Manual mode: every looked-up field is replaced, blanks included, so
-  // switching serials never leaves the previous asset's address/contract on
-  // the form. Upload mode: values from the spreadsheet are kept unless the
-  // lookup has something better (the workbook is the user's own input).
+  // Auto-fill fields from the asset lookup. Every looked-up field is
+  // replaced, blanks included, so switching serials never leaves the previous
+  // asset's address/contract on the form. All of it stays editable.
   useEffect(() => {
     if (assetData?.asset) {
       const asset = assetData.asset;
       const fullAddress = [asset.street, asset.city, asset.stateZip].filter(Boolean).join(", ");
       const set = (field: "accountName" | "facilityName" | "address" | "contractType" | "contractStatus" | "productName", value: string) => {
-        if (value || !parsedData) setValue(field, value, { shouldValidate: field === "accountName" });
+        setValue(field, value, { shouldValidate: field === "accountName" });
       };
       set("accountName", asset.accountName ?? "");
       set("facilityName", asset.facilityName ?? "");
@@ -287,14 +206,12 @@ export function QuoteForm({ parsedData }: QuoteFormProps) {
       set("contractStatus", asset.contractStatus ?? "");
       set("productName", asset.productName ?? "");
       
-      if (!parsedData) {
-        toast({
-          title: "Asset found",
-          description: `Loaded data for ${asset.assetName || serialNumber}`,
-        });
-      }
+      toast({
+        title: "Asset found",
+        description: `Loaded data for ${asset.assetName || serialNumber}`,
+      });
     }
-  }, [assetData, setValue, serialNumber, toast, parsedData]);
+  }, [assetData, setValue, serialNumber, toast]);
 
   const generateMutation = useGenerateQuote({
     mutation: {
@@ -395,28 +312,30 @@ export function QuoteForm({ parsedData }: QuoteFormProps) {
           <div>
             <h2 className="text-xl">Customer Information</h2>
             <p className="text-sm text-muted-foreground">
-              {parsedData ? "Populated from Excel — edit any field below" : "Details populated automatically from serial lookup"}
-              {listing && dataSource && (
-                <span className="text-muted-foreground/70">
-                  {" · Data: "}
-                  {listing.dataSources.length > 1 ? (
-                    <select
-                      value={dataSourceId}
-                      onChange={(e) => switchDataSource(e.target.value)}
-                      className="inline-block rounded-md border border-input bg-card px-1.5 py-0.5 text-xs text-foreground"
-                      aria-label="Data source"
-                    >
-                      {listing.dataSources.map((d) => (
-                        <option key={d.id} value={d.id}>{d.name}{d.isDefault ? " (default)" : ""}</option>
-                      ))}
-                    </select>
-                  ) : (
-                    <span>{dataSource.name}</span>
-                  )}
-                  {" · "}{dataSource.assetCount.toLocaleString()} assets · updated {new Date(dataSource.importedAt).toLocaleDateString()}
-                </span>
-              )}
+              Details populated automatically from serial lookup
             </p>
+          </div>
+          <div className="ml-auto flex items-center gap-2 text-sm" data-testid="active-data-source">
+            <span className="text-muted-foreground">Data Source:</span>
+            {sources.length > 1 ? (
+              <select
+                value={dataSourceId}
+                onChange={(e) => switchDataSource(e.target.value)}
+                className="rounded-lg border border-input bg-card px-2 py-1 text-sm font-semibold text-foreground"
+                aria-label="Data source"
+              >
+                {sources.map((d) => (
+                  <option key={d.id} value={d.id}>{d.name}</option>
+                ))}
+              </select>
+            ) : (
+              <span className="font-semibold text-slate-900">{dataSource?.name ?? dataSourceId}</span>
+            )}
+            {dataSource && (
+              <span className="hidden md:inline text-xs text-muted-foreground">
+                {dataSource.assetCount.toLocaleString()} assets · {dataSource.productCount.toLocaleString()} products
+              </span>
+            )}
           </div>
         </div>
 

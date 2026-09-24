@@ -10,7 +10,7 @@ Quote Magic started as a purpose-built internal tool for Cytek Biosciences and i
 
 - **Serial number lookup** — type a serial number and auto-fill account name, facility, address, contract type/status, and instrument name from the asset catalog.
 - **Parts catalog search** — searchable autocomplete over the pricing catalog with auto-filled part numbers and list prices.
-- **Excel import** — upload a filled-in "FSE Input" workbook and the form auto-populates from it (service quote, parts quote, or both).
+- **Data Sources** — upload a company's workbook once; it becomes a persistent, isolated Source of Truth that quotes are created from. Add, update, replace, set default or delete sources without code changes.
 - **Service + parts quoting** — mix a primary service line with any number of parts line items, each with an optional quote-specific discount %, with live adjusted price, line total, subtotal, shipping and total calculation.
 - **Branded PDF generation** — server-rendered PDF quote (customer block with instrument and serial number, list/net/extended price columns) plus a multi-page terms & conditions document, styled from the active company configuration (logo, colors, footer, legal text).
 - **Company configuration system** — swap company name, address, contact info, logo, quote footer bullets, contract language, document titles, and PDF colors from one config file, with no code changes.
@@ -49,7 +49,7 @@ PORT=8080 pnpm --filter @workspace/api-server run dev
 PORT=22515 BASE_PATH=/ pnpm --filter @workspace/quoting-tool run dev
 ```
 
-Open the frontend URL in your browser. The frontend calls the API under `/api/*`; in local dev, make sure the two are proxied together or point the frontend at the API server directly if running them on separate hosts/ports.
+Open the frontend URL in your browser. The frontend calls the API under `/api/*`; in local dev, make sure the two are proxied together or point the frontend at the API server directly if running them on separate hosts/ports. Set `DATA_SOURCES_DIR=./.data-sources` for the API server so sources you add locally persist.
 
 If you change the OpenAPI spec (`lib/api-spec/openapi.yaml`), regenerate the typed API client before starting the frontend:
 
@@ -99,22 +99,23 @@ You can reproduce the exact Vercel build locally with `npx vercel build` from th
 
 Vercel-specific limits to be aware of: request bodies are capped at 4.5 MB (the FSE upload form allows up to 20 MB elsewhere), and the function has a 30 s `maxDuration`.
 
-## Data Sources (asset and pricing data)
+## How quoting works: Data Source first
 
-Manual Mode looks up serial numbers and products against a **Data Source**: a company's asset catalog and product/pricing catalog, normalized into the shape the app expects. The default source is used automatically, so creating a quote never requires choosing or uploading anything.
+The product model is simple: **upload your Source of Truth once, maintain it occasionally, create quotes from it indefinitely.**
 
-Two kinds exist:
+- **Home → Create a Quote** lists the saved Data Sources. Picking one opens Manual Quote for that source. There is no spreadsheet upload on the quoting path.
+- **Manual Quote** (`/quote/<source id>`) searches only the selected source: serial number → account, facility, address, contract, instrument; part number or name → description, part number, list price; service/work type → price. Everything populated stays editable, with per-line discounts; edits never touch the source. A compact "Data Source: …" indicator (a dropdown when more than one exists) shows what is active; switching with a quote in progress asks for confirmation and starts a new quote, so two sources are never mixed.
+- **Data Sources** (header link, `/data-sources`) is the only place workbooks are uploaded: add a source (name + workbook), set the default, update its workbook, delete it, and see counts and the last update. With zero sources the home page shows an onboarding card that leads here.
 
-- **Built-in**: `Cytek`, compiled into the server from the workbooks under `artifacts/api-server/src/data-sources/cytek/source/` (Rev6 primary, Rev5 supplying the facility/address/contact columns Rev6 no longer exports). Regenerate with `pnpm --filter @workspace/api-server run import:cytek` and commit the JSON. It can never be deleted, so the app always has data.
-- **Uploaded**: from the **Data Sources** page (header link, or `/data-sources`). Upload a workbook with `Asset Data` and `Pricing Data` sheets in the Cytek Quoting Tool layout **once**; it is normalized and saved, and can be set as the default, updated from a newer file, or deleted. When more than one source exists the quote form shows a small selector, preselected to the default.
+Each Data Source is one persistent, isolated dataset normalized from a workbook with `Asset Data` and `Pricing Data` sheets in the Cytek Quoting Tool layout. The Cytek data shipped with the app is a **seed**: on first start it is saved into the store as "Cytek — Current" and from then on it is an ordinary source (update, replace or delete it like any other; a deleted seed does not come back). Regenerate the seed for fresh installations with `pnpm --filter @workspace/api-server run import:cytek`.
 
-Products the workbook has no usable list price for are imported and flagged (`priced: false`); they appear in search marked "no list price" and the form asks for a price when one is selected. Prices are never invented.
+Products the workbook has no usable list price for are imported and flagged; they appear in search marked "no list price" and the form asks for a price. Prices are never invented.
 
 ### Persistence (`DATABASE_URL`)
 
-Uploaded sources are stored in Postgres when `DATABASE_URL` is set (tables are created automatically on first use). Locally, `DATA_SOURCES_DIR=<folder>` stores them as JSON files instead. With neither, the app still runs on the built-in data but uploads are kept in memory only and the Data Sources page says so. On Vercel, add a Postgres database (Marketplace → Neon, or any Postgres) and set `DATABASE_URL` in the project's environment variables.
+Sources are stored in Postgres when `DATABASE_URL` is set (tables are created automatically on first use). Locally, `DATA_SOURCES_DIR=<folder>` stores them as JSON files instead. With neither, the app still runs (the seed is re-created on every start) but anything added or changed is lost on restart, and the Data Sources page says so. On Vercel, add a Postgres database (Marketplace → Neon, or any Postgres) and set `DATABASE_URL` in the project's environment variables, then redeploy.
 
-The API: `GET /api/data-sources`, `POST /api/data-sources` (multipart `name` + `file`), `POST /api/data-sources/{id}/replace`, `POST /api/data-sources/{id}/default`, `DELETE /api/data-sources/{id}`; lookups accept `?dataSource=<id>`.
+The API: `GET /api/data-sources`, `POST /api/data-sources` (multipart `name` + `file`), `POST /api/data-sources/{id}/replace`, `POST /api/data-sources/{id}/default`, `DELETE /api/data-sources/{id}`; lookups take `?dataSource=<id>`.
 
 ## Folder Structure
 

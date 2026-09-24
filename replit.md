@@ -60,13 +60,12 @@ quote-magic/
 - `POST /api/quotes/generate` — Generate PDF quote (returns `application/pdf`)
 - `POST /api/quotes/parse-upload` — Parse an uploaded FSE Excel workbook into form data
 - `GET /api/healthz` — Health check
-- `GET /api/data-source` — Default data source summary
 - `GET/POST /api/data-sources`, `POST /api/data-sources/{id}/replace|default`, `DELETE /api/data-sources/{id}` — Data Source management
 - Lookups accept `?dataSource=<id>`
 
 ## Data Source
 
-Manual Mode reads from the default **Data Source**. Built-in: **Cytek**, generated from `Cytek Quoting Tool - Rev6.xlsx` (assets, pricing) with facility/address/contact columns carried over from Rev5; regenerate with `pnpm --filter @workspace/api-server run import:cytek`. Users can upload further workbooks (same layout) on the Data Sources page (`/data-sources`), set a default, update or delete them; persisted in Postgres when `DATABASE_URL` is set. See `manifest.json` in `artifacts/api-server/src/data-sources/cytek/` for counts and field mappings.
+Quotes are created from a saved **Data Source** (Home → pick a source → Manual Quote at `/quote/<id>`); no spreadsheet is uploaded when quoting. Sources are managed on `/data-sources` (add, set default, update file, delete) and persisted in Postgres when `DATABASE_URL` is set (or `DATA_SOURCES_DIR` locally). The shipped Cytek data is a seed saved on first start as "Cytek — Current", generated from `Cytek Quoting Tool - Rev6.xlsx` with facility/address/contact carried over from Rev5; regenerate with `pnpm --filter @workspace/api-server run import:cytek`. See `manifest.json` in `artifacts/api-server/src/data-sources/cytek/` for counts and field mappings.
 - **Asset Data**: 9,635 instruments with serial, account, product, contract type/number/end date, country, status
 - **Pricing Data**: 5,419 products (5,180 priced, 239 flagged as having no list price in the source; 164 services/contracts)
 

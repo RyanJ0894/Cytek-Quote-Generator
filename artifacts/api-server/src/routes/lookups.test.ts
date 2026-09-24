@@ -11,15 +11,16 @@ import { fileURLToPath } from "node:url";
 import app from "../app.js";
 import { DataSourceService, setDataSourceService } from "../data-sources/service.js";
 import { MemoryDataSourceStore } from "../data-sources/store.js";
-import { cytekDataSource } from "../data-sources/cytek/index.js";
+import { cytekSeed } from "../data-sources/cytek/index.js";
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const REV6 = readFileSync(path.join(here, "..", "data-sources", "cytek", "source", "cytek-quoting-tool-rev6.xlsx"));
+const REV5 = readFileSync(path.join(here, "..", "data-sources", "cytek", "source", "cytek-quoting-tool-rev5.xlsx"));
 
 let server: http.Server;
 let baseUrl = "";
 before(async () => {
-  setDataSourceService(new DataSourceService(new MemoryDataSourceStore(), [cytekDataSource], "cytek"));
+  setDataSourceService(new DataSourceService(new MemoryDataSourceStore(), [cytekSeed]));
   server = http.createServer(app);
   await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
   const addr = server.address();
@@ -33,15 +34,18 @@ const get = async (p: string) => {
   return { status: res.status, body: (await res.json()) as any };
 };
 
-test("GET /api/data-source describes the default Cytek source", async () => {
-  const { status, body } = await get("/api/data-source");
+test("GET /api/data-sources lists the seeded Cytek source as default", async () => {
+  const { status, body } = await get("/api/data-sources");
   assert.equal(status, 200);
-  assert.equal(body.id, "cytek");
-  assert.equal(body.isDefault, true);
-  assert.equal(body.builtIn, true);
-  assert.equal(body.assetCount, 9635);
-  assert.equal(body.productCount, 5419);
-  assert.equal(body.unpricedProductCount, 239);
+  assert.equal(body.defaultId, "cytek");
+  assert.equal(body.dataSources.length, 1);
+  const c = body.dataSources[0];
+  assert.equal(c.name, "Cytek — Current");
+  assert.equal(c.isDefault, true);
+  assert.equal(c.assetCount, 9635);
+  assert.equal(c.productCount, 5419);
+  assert.equal(c.unpricedProductCount, 239);
+  assert.ok(c.updatedAt);
 });
 
 test("GET /api/assets/serials lists every imported serial", async () => {
@@ -129,45 +133,65 @@ test("work types (services) available to the Service Type search", async () => {
   assert.equal(body.parts.find((p: any) => p.partName === "Basic contract deductible")?.priced, false);
 });
 
-test("data sources: upload once, query by id, set default, delete", async () => {
+test("data sources: upload once, query by id, isolation, set default, delete to zero state", async () => {
   const form = new FormData();
-  form.append("name", "Cytek Rev6 upload");
-  form.append("file", new Blob([REV6]), "Cytek Quoting Tool - Rev6.xlsx");
+  form.append("name", "Company B");
+  form.append("file", new Blob([REV5]), "company-b.xlsx");
   const created = await fetch(`${baseUrl}/api/data-sources`, { method: "POST", body: form });
   assert.equal(created.status, 201);
   const summary = (await created.json()) as any;
-  assert.equal(summary.id, "cytek-rev6-upload");
-  assert.equal(summary.assetCount, 9635);
+  assert.equal(summary.id, "company-b");
+  assert.equal(summary.assetCount, 3585);
 
   let listing = (await get("/api/data-sources")).body;
-  assert.deepEqual(listing.dataSources.map((d: any) => d.id), ["cytek", "cytek-rev6-upload"]);
+  assert.deepEqual(listing.dataSources.map((d: any) => d.id), ["cytek", "company-b"]);
   assert.equal(listing.defaultId, "cytek");
   assert.equal(listing.persistent, false);
   assert.equal(listing.storeKind, "memory");
 
-  const viaId = await get("/api/assets/lookup?serial=U1399&dataSource=cytek-rev6-upload");
-  assert.equal(viaId.status, 200);
-  assert.equal(viaId.body.asset.facilityName, "Ragon Institute of MGH MIT and Harvard", "uploaded source has no Rev5 facility codes");
-  assert.equal((await get("/api/assets/serials?dataSource=cytek-rev6-upload")).body.serials.length, 9635);
-  assert.equal((await get("/api/parts?dataSource=cytek-rev6-upload")).body.parts.length, 5419);
+  // Isolation: A (Cytek, Rev6-based) and B (Rev5-based) never leak into each other.
+  assert.equal((await get("/api/assets/lookup?serial=NE0006&dataSource=cytek")).status, 200);
+  assert.equal((await get("/api/assets/lookup?serial=NE0006&dataSource=company-b")).status, 404);
+  assert.equal((await get("/api/assets/lookup?serial=8470060146&dataSource=company-b")).status, 200);
+  assert.equal((await get("/api/assets/lookup?serial=8470060146&dataSource=cytek")).status, 404);
+  assert.equal((await get("/api/assets/serials?dataSource=company-b")).body.serials.length, 3585);
+  assert.equal((await get("/api/assets/serials?dataSource=cytek")).body.serials.length, 9635);
+  assert.equal((await get("/api/parts?dataSource=company-b")).body.parts.length, 5419, "Rev5 pricing sheet is identical");
+  const viaB = await get("/api/assets/lookup?serial=U1399&dataSource=company-b");
+  assert.equal(viaB.body.asset.accountName, "Ragon Institute of MGH MIT and Harvard");
+  assert.equal(viaB.body.asset.productName, "Cytek Aurora 5 Laser UV/V/B/YG/R (64 + 3 Channel)", "B's own product name, not A's");
 
-  const setDefault = await fetch(`${baseUrl}/api/data-sources/cytek-rev6-upload/default`, { method: "POST" });
-  assert.equal(setDefault.status, 200);
-  assert.equal((await get("/api/data-source")).body.id, "cytek-rev6-upload");
-  assert.equal((await get("/api/assets/lookup?serial=U1399")).body.asset.facilityName, "Ragon Institute of MGH MIT and Harvard");
+  // Default switching changes what unqualified lookups see.
+  assert.equal((await fetch(`${baseUrl}/api/data-sources/company-b/default`, { method: "POST" })).status, 200);
+  assert.equal((await get("/api/data-sources")).body.defaultId, "company-b");
+  assert.equal((await get("/api/assets/lookup?serial=8470060146")).status, 200);
 
-  assert.equal((await fetch(`${baseUrl}/api/data-sources/cytek`, { method: "DELETE" })).status, 400, "built-in cannot be deleted");
-  assert.equal((await fetch(`${baseUrl}/api/data-sources/cytek-rev6-upload`, { method: "DELETE" })).status, 204);
-  listing = (await get("/api/data-sources")).body;
-  assert.equal(listing.dataSources.length, 1);
-  assert.equal(listing.defaultId, "cytek");
+  // Replace B's workbook with Rev6 -> B now has the Rev6 serials.
+  const rep = new FormData();
+  rep.append("file", new Blob([REV6]), "rev6.xlsx");
+  const replaced = await fetch(`${baseUrl}/api/data-sources/company-b/replace`, { method: "POST", body: rep });
+  assert.equal(replaced.status, 200);
+  assert.equal(((await replaced.json()) as any).assetCount, 9635);
+  assert.equal((await get("/api/assets/lookup?serial=NE0006&dataSource=company-b")).status, 200);
 
+  // Bad uploads.
   const bad = new FormData();
   bad.append("name", "Bad");
   bad.append("file", new Blob([Buffer.from("nope")]), "bad.xlsx");
-  const badRes = await fetch(`${baseUrl}/api/data-sources`, { method: "POST", body: bad });
-  assert.equal(badRes.status, 400);
+  assert.equal((await fetch(`${baseUrl}/api/data-sources`, { method: "POST", body: bad })).status, 400);
   const missingName = new FormData();
   missingName.append("file", new Blob([REV6]), "x.xlsx");
   assert.equal((await fetch(`${baseUrl}/api/data-sources`, { method: "POST", body: missingName })).status, 400);
+
+  // Delete down to the zero state (the seeded source is deletable like any other).
+  assert.equal((await fetch(`${baseUrl}/api/data-sources/company-b`, { method: "DELETE" })).status, 204);
+  assert.equal((await get("/api/data-sources")).body.defaultId, "cytek");
+  assert.equal((await fetch(`${baseUrl}/api/data-sources/cytek`, { method: "DELETE" })).status, 204);
+  listing = (await get("/api/data-sources")).body;
+  assert.deepEqual(listing.dataSources, []);
+  assert.equal(listing.defaultId, null);
+  const none = await get("/api/assets/serials");
+  assert.equal(none.status, 404);
+  assert.match(none.body.error, /No data sources configured/);
+  assert.equal((await fetch(`${baseUrl}/api/data-sources/nope`, { method: "DELETE" })).status, 404);
 });
