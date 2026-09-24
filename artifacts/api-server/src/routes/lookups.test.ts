@@ -46,6 +46,20 @@ test("GET /api/data-sources lists the seeded Cytek source as default", async () 
   assert.equal(c.productCount, 5419);
   assert.equal(c.unpricedProductCount, 239);
   assert.ok(c.updatedAt);
+  assert.equal(c.quoteProfile.companyName, "Cytek Biosciences Inc.");
+  assert.equal(c.quoteProfile.complete, true);
+});
+
+test("quote profile endpoints: read, save, logo", async () => {
+  const got = await get("/api/data-sources/cytek/profile");
+  assert.equal(got.status, 200);
+  assert.equal(got.body.profile.companyName, "Cytek Biosciences Inc.");
+  assert.equal(got.body.complete, true);
+  const logo = await fetch(`${baseUrl}/api/data-sources/cytek/logo`);
+  assert.equal(logo.status, 200);
+  assert.equal(logo.headers.get("content-type"), "image/png");
+  assert.equal(Buffer.from(await logo.arrayBuffer()).subarray(1, 4).toString(), "PNG");
+  assert.equal((await get("/api/data-sources/nope/profile")).status, 404);
 });
 
 test("GET /api/assets/serials lists every imported serial", async () => {

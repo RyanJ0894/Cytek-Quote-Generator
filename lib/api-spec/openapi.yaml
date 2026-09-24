@@ -91,6 +91,68 @@ paths:
               schema:
                 $ref: "#/components/schemas/DataSourceSummary"
 
+  /data-sources/{id}/profile:
+    get:
+      operationId: getQuoteProfile
+      tags: [data-sources]
+      summary: The seller identity/branding used for documents from this source (null until set up)
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Profile and completeness
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/QuoteProfileResult"
+    put:
+      operationId: updateQuoteProfile
+      tags: [data-sources]
+      summary: Save the seller identity/branding for this source
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/QuoteProfile"
+      responses:
+        "200":
+          description: Saved
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/QuoteProfileResult"
+
+  /data-sources/{id}/logo:
+    get:
+      operationId: getQuoteProfileLogo
+      tags: [data-sources]
+      summary: The profile's logo image (404 when none)
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Image bytes
+          content:
+            image/png:
+              schema:
+                type: string
+                format: binary
+
   /data-sources/{id}/default:
     post:
       operationId: setDefaultDataSource
@@ -296,6 +358,8 @@ components:
           type: string
         isDefault:
           type: boolean
+        quoteProfile:
+          $ref: "#/components/schemas/QuoteProfileSummary"
         importedAt:
           type: string
         updatedAt:
@@ -315,12 +379,136 @@ components:
         - id
         - name
         - isDefault
+        - quoteProfile
         - importedAt
         - updatedAt
         - sourceFiles
         - assetCount
         - productCount
         - unpricedProductCount
+
+    QuoteProfileSummary:
+      type: object
+      description: Seller identity status for a data source, without the logo data.
+      properties:
+        companyName:
+          type: string
+        shortName:
+          type: string
+        addressLine:
+          type: string
+        phone:
+          type: string
+        email:
+          type: string
+        website:
+          type: string
+        hasLogo:
+          type: boolean
+        complete:
+          type: boolean
+        missing:
+          type: array
+          items:
+            type: string
+      required: [companyName, shortName, addressLine, phone, email, website, hasLogo, complete, missing]
+
+    QuoteProfileLogo:
+      type: object
+      properties:
+        dataUrl:
+          type: string
+          description: data:image/png;base64,... or data:image/jpeg;base64,... (max 1.5 MB)
+        aspectRatio:
+          type: number
+          description: height divided by width
+      required: [dataUrl, aspectRatio]
+
+    TermsSection:
+      type: object
+      properties:
+        heading:
+          type: string
+        body:
+          type: string
+      required: [heading, body]
+
+    QuoteProfile:
+      type: object
+      description: Seller identity and document branding for one data source.
+      properties:
+        companyName:
+          type: string
+        shortName:
+          type: string
+        address:
+          type: object
+          properties:
+            street:
+              type: string
+            cityStateZip:
+              type: string
+          required: [street, cityStateZip]
+        contact:
+          type: object
+          properties:
+            phone:
+              type: string
+            fax:
+              type: string
+            website:
+              type: string
+            email:
+              type: string
+          required: [phone, fax, website, email]
+        logo:
+          allOf:
+            - $ref: "#/components/schemas/QuoteProfileLogo"
+          nullable: true
+        quoteBullets:
+          type: array
+          items:
+            type: string
+        termsAndConditions:
+          type: object
+          properties:
+            title:
+              type: string
+            subtitle:
+              type: string
+            intro:
+              type: string
+            sections:
+              type: array
+              items:
+                $ref: "#/components/schemas/TermsSection"
+          required: [title, subtitle, intro, sections]
+        pdfTheme:
+          type: object
+          properties:
+            tableHeaderBackground:
+              type: string
+            textColor:
+              type: string
+            borderColor:
+              type: string
+          required: [tableHeaderBackground, textColor, borderColor]
+      required: [companyName, shortName, address, contact, logo, quoteBullets, termsAndConditions, pdfTheme]
+
+    QuoteProfileResult:
+      type: object
+      properties:
+        profile:
+          allOf:
+            - $ref: "#/components/schemas/QuoteProfile"
+          nullable: true
+        complete:
+          type: boolean
+        missing:
+          type: array
+          items:
+            type: string
+      required: [profile, complete, missing]
 
     DataSourceListing:
       type: object
@@ -423,6 +611,9 @@ components:
     QuoteRequest:
       type: object
       properties:
+        dataSource:
+          type: string
+          description: Data source whose Quote Profile brands the document (and whose catalog the quote was built from).
         customerName:
           type: string
         accountName:

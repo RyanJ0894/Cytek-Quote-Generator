@@ -35,11 +35,43 @@ async function exerciseService(store: DataSourceStore) {
   assert.equal((await svc.resolve()).listSerials().length, 9635);
   assert.equal((await svc.resolve()).lookupAsset("U1399")?.facilityName, "RGON", "seed keeps the Rev5 facility codes");
 
+  // The seed brings its own Quote Profile (the former hardcoded Cytek branding).
+  const cytekProfile = await svc.getProfile("cytek");
+  assert.equal(cytekProfile?.companyName, "Cytek Biosciences Inc.");
+  assert.equal(cytekProfile?.contact.email, "technical.support@cytekbio.com");
+  assert.ok(cytekProfile?.logo?.dataUrl.startsWith("data:image/png;base64,"));
+  assert.equal(cytekProfile?.termsAndConditions.sections.length, 14);
+  assert.equal(listing.dataSources[0].quoteProfile.complete, true);
+  assert.equal(listing.dataSources[0].quoteProfile.hasLogo, true);
+
   // One-time upload of a second, isolated source (Rev5 data as "Company B").
   const created = await svc.importFromWorkbook("Company B", { buffer: REV5, fileName: "company-b.xlsx" });
   assert.equal(created.id, "company-b");
   assert.equal(created.assetCount, 3585);
   assert.equal(created.isDefault, false);
+
+  // A new source never inherits another source's branding: no profile at all.
+  assert.equal(await svc.getProfile("company-b"), null);
+  assert.equal(created.quoteProfile.complete, false);
+  assert.deepEqual(created.quoteProfile.missing, ["Company name", "Street address", "City, state and ZIP", "Phone", "Email"]);
+  assert.equal(created.quoteProfile.hasLogo, false);
+  // Partial profile -> still incomplete, with the specific gaps named.
+  await svc.setProfile("company-b", { companyName: "Company B LLC", contact: { phone: "555-0100" } });
+  let bSummary = (await svc.list()).dataSources.find((d) => d.id === "company-b")!;
+  assert.deepEqual(bSummary.quoteProfile.missing, ["Street address", "City, state and ZIP", "Email"]);
+  await svc.setProfile("company-b", {
+    companyName: "Company B LLC", shortName: "Company B",
+    address: { street: "1 Test Way", cityStateZip: "Testville, TX 75001" },
+    contact: { phone: "555-0100", email: "quotes@companyb.test" },
+    pdfTheme: { textColor: "#112233" },
+  });
+  bSummary = (await svc.list()).dataSources.find((d) => d.id === "company-b")!;
+  assert.equal(bSummary.quoteProfile.complete, true);
+  assert.equal((await svc.getProfile("company-b"))?.pdfTheme.textColor, "#112233");
+  assert.equal((await svc.getProfile("company-b"))?.pdfTheme.borderColor, "#000000", "defaults fill unspecified colors");
+  await assert.rejects(svc.setProfile("company-b", { logo: { dataUrl: "data:text/plain;base64,QUJD", aspectRatio: 1 } }), (e: DataSourceError) => e.status === 400 && /PNG or JPEG/.test(e.message));
+  await assert.rejects(svc.setProfile("company-b", { pdfTheme: { textColor: "red" } }), (e: DataSourceError) => e.status === 400);
+  await assert.rejects(svc.getProfile("nope"), (e: DataSourceError) => e.status === 404);
 
   // Isolation: each source answers only from its own records.
   const a = await svc.resolve("cytek");
@@ -75,6 +107,10 @@ async function exerciseService(store: DataSourceStore) {
   // The seeded source is an ordinary source: it can be replaced too.
   const seedReplaced = await svc.replaceWorkbook("cytek", { buffer: REV5, fileName: "rev5.xlsx" });
   assert.equal(seedReplaced.assetCount, 3585);
+  // Replacing a workbook never erases the source's Quote Profile.
+  assert.equal((await svc.getProfile("cytek"))?.companyName, "Cytek Biosciences Inc.");
+  assert.equal(seedReplaced.quoteProfile.complete, true);
+  assert.equal((await svc.getProfile("company-b"))?.companyName, "Company B LLC");
 
   // Errors.
   await assert.rejects(svc.resolve("nope"), (e: DataSourceError) => e.status === 404);
@@ -88,6 +124,7 @@ async function exerciseService(store: DataSourceStore) {
 
   // Delete everything: default falls back to whatever remains, then to none.
   await svc.delete("company-b");
+  assert.equal(await store.getProfile("company-b"), null, "profile is deleted with its source");
   assert.equal((await svc.list()).defaultId, "company-b-2", "first remaining by name");
   await svc.delete("company-b-2");
   await svc.delete("cytek");
@@ -137,6 +174,9 @@ describe("DataSourceService", () => {
     assert.deepEqual(rows.rows, [{ id: "persisted", n: 3585 }]);
     const settings = await pg.query<{ key: string }>("select key from app_settings order by key");
     assert.deepEqual(settings.rows.map((r) => r.key), ["default_data_source_id", "seeded:cytek"]);
+    await b.setProfile("persisted", { companyName: "P Inc" });
+    const profiles = await pg.query<{ data_source_id: string; name: string }>("select data_source_id, profile->>'companyName' as name from quote_profiles");
+    assert.deepEqual(profiles.rows, [{ data_source_id: "persisted", name: "P Inc" }]);
   });
 
   test("a fresh store seeds Cytek exactly once and keeps it on later starts", async () => {

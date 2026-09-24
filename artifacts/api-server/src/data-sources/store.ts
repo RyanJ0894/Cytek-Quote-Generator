@@ -8,6 +8,7 @@
  * deployments whose filesystem is ephemeral).
  */
 import type { DataSourceManifest, StoredDataSource } from "./types.js";
+import type { QuoteProfile } from "./quote-profile.js";
 
 export interface StoredDataSourceHeader {
   id: string;
@@ -31,6 +32,12 @@ export interface DataSourceStore {
   /** Small key/value settings (default source id, seeding markers). */
   getSetting(key: string): Promise<string | null>;
   setSetting(key: string, value: string | null): Promise<void>;
+  /**
+   * Quote Profile per data source id. Kept apart from the data record so
+   * replacing a workbook never touches it; deleted with the source.
+   */
+  getProfile(id: string): Promise<QuoteProfile | null>;
+  setProfile(id: string, profile: QuoteProfile | null): Promise<void>;
 }
 
 export const DEFAULT_SOURCE_KEY = "default_data_source_id";
@@ -40,6 +47,7 @@ export class MemoryDataSourceStore implements DataSourceStore {
   readonly persistent = false;
   private readonly records = new Map<string, StoredDataSource>();
   private readonly settings = new Map<string, string>();
+  private readonly profiles = new Map<string, QuoteProfile>();
 
   async list() {
     return [...this.records.values()].map(({ id, name, manifest, updatedAt }) => ({ id, name, manifest, updatedAt }));
@@ -57,8 +65,16 @@ export class MemoryDataSourceStore implements DataSourceStore {
   }
   async delete(id: string) {
     const existed = this.records.delete(id);
+    this.profiles.delete(id);
     if (this.settings.get(DEFAULT_SOURCE_KEY) === id) this.settings.delete(DEFAULT_SOURCE_KEY);
     return existed;
+  }
+  async getProfile(id: string) {
+    return this.profiles.get(id) ?? null;
+  }
+  async setProfile(id: string, profile: QuoteProfile | null) {
+    if (profile === null) this.profiles.delete(id);
+    else this.profiles.set(id, profile);
   }
   async getSetting(key: string) {
     return this.settings.get(key) ?? null;

@@ -4,6 +4,7 @@ import { hydrateAssets, hydrateProducts } from "../static-source.js";
 import manifest from "./manifest.json";
 import assets from "./assets.json";
 import products from "./products.json";
+import { cytekQuoteProfile } from "./profile.js";
 
 /**
  * The Cytek data shipped with the application. It is saved into the data
@@ -16,4 +17,5 @@ export const cytekSeed: SeedDataSource = {
   manifest: manifest as DataSourceManifest,
   assets: hydrateAssets(assets) as NormalizedAsset[],
   products: hydrateProducts(products) as NormalizedProduct[],
+  quoteProfile: cytekQuoteProfile,
 };

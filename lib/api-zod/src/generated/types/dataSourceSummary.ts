@@ -5,11 +5,13 @@
  * Cytek Quoting Tool API
  * OpenAPI spec version: 0.1.0
  */
+import type { QuoteProfileSummary } from "./quoteProfileSummary";
 
 export interface DataSourceSummary {
   id: string;
   name: string;
   isDefault: boolean;
+  quoteProfile: QuoteProfileSummary;
   importedAt: string;
   /** Last time the source was created or its workbook replaced. */
   updatedAt: string;

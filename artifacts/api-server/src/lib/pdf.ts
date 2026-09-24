@@ -1,11 +1,8 @@
-import path from "path";
-import { existsSync } from "fs";
-
 /**
  * Reusable, company-agnostic PDFKit drawing helpers for the quote/contract
  * document. Layout (page size, columns, fonts) lives here; wording and
- * branding (company name, colors, contract text) come from
- * `@workspace/config` and are passed in by the caller.
+ * branding (company name, logo, colors, contract text) come from the active
+ * data source's Quote Profile and are passed in by the caller.
  */
 
 // ── Page constants ──────────────────────────────────────────────────────
@@ -42,15 +39,9 @@ export function logoHeight(aspectRatio: number): number {
   return Math.round(LOGO_W * aspectRatio);
 }
 
-// ── Logo path resolution (dev vs prod) ──────────────────────────────────
-export function resolveLogoPath(fileName: string): string {
-  const candidates = [
-    path.join(process.cwd(), "src/data", fileName),
-    path.join(process.cwd(), "artifacts/api-server/src/data", fileName),
-    path.join(process.cwd(), "data", fileName),
-  ];
-  return candidates.find((p) => existsSync(p)) ?? candidates[0];
-}
+/** Header identity: an image (logo bytes + height/width ratio) or the company name as text. */
+export type HeaderLogo = { image: Buffer; aspectRatio: number } | { text: string };
+const TEXT_LOGO_H = 26;
 
 export function fmtDate(): string {
   const d = new Date();
@@ -206,14 +197,18 @@ export function drawFooter(
 export function drawPageHeader(
   doc: PDFKit.PDFDocument,
   dateStr: string,
-  logoPath: string,
-  logoAspectRatio: number,
+  logo: HeaderLogo,
   textColor: string,
   quoteNum?: string,
 ): number {
-  const logoH = logoHeight(logoAspectRatio);
-  if (existsSync(logoPath)) {
-    doc.image(logoPath, ML, ML, { width: LOGO_W });
+  let logoH: number;
+  if ("image" in logo) {
+    logoH = logoHeight(logo.aspectRatio);
+    doc.image(logo.image, ML, ML, { width: LOGO_W });
+  } else {
+    logoH = TEXT_LOGO_H;
+    doc.font(FONT_BOLD).fontSize(18).fillColor(textColor)
+       .text(logo.text, ML, ML + 4, { width: 300, lineBreak: false });
   }
   doc.font(FONT_REG).fontSize(10).fillColor(textColor)
     .text(dateStr, ML, ML, { width: PAGE_W - ML * 2, align: "right" });

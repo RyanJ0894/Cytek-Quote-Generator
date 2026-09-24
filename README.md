@@ -1,10 +1,8 @@
-# Quote Magic
+# Evans Quote Generator
 
-Quote Magic is a configurable service quoting and PDF contract generator. Field engineers look up an instrument by serial number, get customer and contract details auto-filled from an Excel data source, add parts and service line items, and generate a branded PDF quote with terms & conditions attached.
+Evans Quote Generator is a service quoting and PDF contract generator. Pick a Data Source, look up an instrument by serial number, get customer and contract details auto-filled, add parts and service line items with discounts, and generate a PDF quote branded with that source's own seller identity, with terms & conditions attached.
 
-Quote Magic started as a purpose-built internal tool for Cytek Biosciences and is being generalized into a reusable, commercially licensable product. All company-specific branding, contact information, and contract language now live in a single configuration module (`lib/config`), so the same codebase can be re-branded for a new customer without touching application code.
-
-> The Cytek Biosciences configuration shipped in this repository (`lib/config/src/companies/cytek.ts`) is an example/default tenant configuration, not a hardcoded requirement of the product.
+The application itself is seller-neutral. Each **Data Source** is one company's or dataset's Source of Truth (assets, products, prices) and carries its own **Quote Profile** (company name, logo, address, contact details, document notes, terms, colors). Cytek Biosciences ships as the seeded "Cytek — Current" source with its original branding; any other source starts with no branding and is set up on the Data Sources page. Nothing Cytek-specific is hardcoded into the application.
 
 ## Features
 
@@ -13,7 +11,7 @@ Quote Magic started as a purpose-built internal tool for Cytek Biosciences and i
 - **Data Sources** — upload a company's workbook once; it becomes a persistent, isolated Source of Truth that quotes are created from. Add, update, replace, set default or delete sources without code changes.
 - **Service + parts quoting** — mix a primary service line with any number of parts line items, each with an optional quote-specific discount %, with live adjusted price, line total, subtotal, shipping and total calculation.
 - **Branded PDF generation** — server-rendered PDF quote (customer block with instrument and serial number, list/net/extended price columns) plus a multi-page terms & conditions document, styled from the active company configuration (logo, colors, footer, legal text).
-- **Company configuration system** — swap company name, address, contact info, logo, quote footer bullets, contract language, document titles, and PDF colors from one config file, with no code changes.
+- **Quote Profiles** — each Data Source has its own seller identity: company name, logo, address, contact info, notes under the line items, terms & conditions and PDF colors, edited in the app. Documents from a source are branded only by that source's profile; a source without a complete profile cannot generate documents.
 
 ## Tech Stack
 
@@ -39,7 +37,7 @@ pnpm install
 
 ## Running Locally
 
-Quote Magic runs as two independent services: the API server and the frontend. Both read required configuration from environment variables (see below) — set them before starting either service.
+Evans Quote Generator runs as two independent services: the API server and the frontend. Both read required configuration from environment variables (see below) — set them before starting either service.
 
 ```bash
 # Terminal 1 — API server (default: http://localhost:8080)
@@ -63,7 +61,6 @@ pnpm --filter @workspace/api-spec run codegen
 | --- | --- | --- |
 | `PORT` | API server, frontend | Port each service listens on. The process throws on startup if unset. |
 | `BASE_PATH` | frontend | Base path the frontend is served from (e.g. `/`). Required by the Vite config. |
-| `COMPANY_ID` | API server, frontend | Optional. Selects which `CompanyConfig` in `lib/config/src/companies/` is active. Defaults to `cytek`, the only company configured today. |
 | `NODE_ENV` | API server | Standard Node environment flag (`development` / `production`). |
 | `DATABASE_URL` | API server | Optional. Postgres connection string used to persist uploaded Data Sources. Without it, uploads survive only until the server restarts. |
 | `DATA_SOURCES_DIR` | API server | Optional (local/dev). Directory for file-based Data Source storage when no database is configured. |
@@ -90,7 +87,7 @@ The repo is set up to deploy as **one Vercel project** that serves both the fron
 1. In Vercel, **Import** the GitHub repository (`RyanJ0894/Cytek-Quote-Generator`).
 2. Leave **Root Directory** as the repository root (do **not** set it to `artifacts/api-server` — an older setup did this and no longer applies). Framework Preset should show "Other".
 3. Leave Build Command, Output Directory and Install Command on their defaults — `vercel.json` overrides them (`pnpm run build:vercel`, `artifacts/quoting-tool/dist/public`, `pnpm install`).
-4. No environment variables are required. `COMPANY_ID` is optional (defaults to `cytek`).
+4. No environment variables are required to run; add `DATABASE_URL` so Data Sources and Quote Profiles persist (see Persistence below).
 5. Deploy. Every push to the production branch redeploys automatically.
 
 How it works: `pnpm run build:vercel` builds the static frontend and the API bundle (`artifacts/api-server/dist/vercel.cjs`). `api/index.js` is a one-line shim that re-exports that pre-built Express app, because Vercel only creates functions from files under `api/`. `vercel.json` includes `artifacts/api-server/src/data/**` (the company logo) in the function bundle; the asset/pricing data is compiled into the API bundle itself and rewrites `/api/*` to it. Do **not** rely on Vercel's "Express" framework preset / zero-config TypeScript compilation — it cannot resolve this monorepo's workspace packages (see `DEVELOPMENT_NOTES.md`).
@@ -105,9 +102,9 @@ The product model is simple: **upload your Source of Truth once, maintain it occ
 
 - **Home → Create a Quote** lists the saved Data Sources. Picking one opens Manual Quote for that source. There is no spreadsheet upload on the quoting path.
 - **Manual Quote** (`/quote/<source id>`) searches only the selected source: serial number → account, facility, address, contract, instrument; part number or name → description, part number, list price; service/work type → price. Everything populated stays editable, with per-line discounts; edits never touch the source. A compact "Data Source: …" indicator (a dropdown when more than one exists) shows what is active; switching with a quote in progress asks for confirmation and starts a new quote, so two sources are never mixed.
-- **Data Sources** (header link, `/data-sources`) is the only place workbooks are uploaded: add a source (name + workbook), set the default, update its workbook, delete it, and see counts and the last update. With zero sources the home page shows an onboarding card that leads here.
+- **Data Sources** (header link, `/data-sources`) is the only place workbooks are uploaded: add a source (name + workbook), set the default, update its workbook, delete it, see counts and the last update, and edit its **Quote Profile** (`/data-sources/<id>/profile`). With zero sources the home page shows an onboarding card that leads here.
 
-Each Data Source is one persistent, isolated dataset normalized from a workbook with `Asset Data` and `Pricing Data` sheets in the Cytek Quoting Tool layout. The Cytek data shipped with the app is a **seed**: on first start it is saved into the store as "Cytek — Current" and from then on it is an ordinary source (update, replace or delete it like any other; a deleted seed does not come back). Regenerate the seed for fresh installations with `pnpm --filter @workspace/api-server run import:cytek`.
+Each Data Source is one persistent, isolated dataset normalized from a workbook with `Asset Data` and `Pricing Data` sheets (today: the Cytek Quoting Tool layout), plus a Quote Profile stored separately so updating the workbook never touches the branding. The Cytek data shipped with the app is a **seed**: on first start it is saved into the store as "Cytek — Current" together with the Cytek Quote Profile, and from then on it is an ordinary source (update, replace or delete it like any other; a deleted seed does not come back). Regenerate the seed data for fresh installations with `pnpm --filter @workspace/api-server run import:cytek`.
 
 Products the workbook has no usable list price for are imported and flagged; they appear in search marked "no list price" and the form asks for a price. Prices are never invented.
 
@@ -123,9 +120,9 @@ The API: `GET /api/data-sources`, `POST /api/data-sources` (multipart `name` + `
 quote-magic/
 ├── artifacts/
 │   ├── api-server/              # Express API server
-│   │   ├── src/data/            # company logo used in the PDF header
-│   │   ├── src/data-sources/    # Data Sources: normalized asset + pricing data behind Manual Mode (see below)
-│   │   │   └── cytek/           # Cytek importer, source workbooks, generated assets/products/manifest JSON
+│   │   ├── src/data-sources/    # Data Sources: normalized data + Quote Profiles behind quoting (see above)
+│   │   │   ├── quote-profile.ts # seller identity model, validation, completeness, PDF footer lines
+│   │   │   └── cytek/           # seed: source workbooks, generated data JSON, Cytek Quote Profile + logo
 │   │   ├── src/lib/             # fseUploadParser.ts, pdf.ts (reusable PDF drawing helpers)
 │   │   ├── src/routes/          # assets.ts, parts.ts, quotes.ts, upload.ts, health.ts
 │   │   └── src/middlewares/     # reserved for future Express middleware
@@ -136,8 +133,6 @@ quote-magic/
 │           ├── hooks/
 │           └── lib/             # frontend-only utilities (cn, formatCurrency)
 ├── lib/
-│   ├── config/                  # @workspace/config — single source of truth for company/branding data
-│   │   └── src/companies/       # one file per company (e.g. cytek.ts) implementing CompanyConfig
 │   ├── api-spec/                # OpenAPI spec + Orval codegen config
 │   ├── api-client-react/        # Generated typed React Query hooks
 │   ├── api-zod/                 # Generated Zod schemas
@@ -149,9 +144,6 @@ quote-magic/
 
 ## Future Roadmap
 
-- **Multi-company support**: `lib/config` already isolates all per-company data behind the `CompanyConfig` interface and an `ACTIVE_COMPANY_ID`/`COMPANY_ID` selection seam. The next step is resolving the active company per-request (e.g. by subdomain or account) instead of at process startup.
-- **User accounts & authentication**: `lib/db` is scaffolded (Drizzle ORM + Postgres) but not wired up. Adding accounts would let each company manage its own users and data.
-- **Persisted quote history**: quotes are currently generated and streamed directly to the browser with no server-side record. A database-backed quote history/audit trail is a natural extension once `lib/db` is active.
-- **Configurable branding colors in the UI**: the PDF's colors already come from `CompanyConfig.pdfTheme`; extending that to the on-screen Tailwind theme (currently CSS custom properties in `index.css`) would let a company's brand colors drive the whole app, not just the PDF.
-- **Company-specific document titles in the browser tab**: `index.html`'s `<title>` is currently static; templating it from the active `CompanyConfig` at build time would complete the white-labeling story.
-- **Automated tests**: there is currently no test suite. Priority coverage would be the FSE upload parser (`fseUploadParser.ts`) and PDF line-item/total calculations, both of which are pure functions well-suited to unit testing.
+- **Header mapping for other workbook layouts**: today an uploaded workbook must use the Cytek Quoting Tool sheet and column names (`readSheet` in `workbook-importer.ts` already resolves each field through a list of accepted header aliases). The cleanest next step is a one-time "detected column → app field" mapping saved with the Data Source, so any company's spreadsheet can become a Source of Truth without code changes.
+- **Access control**: the Data Sources and Quote Profile pages have no login.
+- **Automated frontend tests**: the React app is exercised only by a browser script during development.

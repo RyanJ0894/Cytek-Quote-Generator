@@ -1,7 +1,7 @@
 import React from "react";
 import { Link } from "wouter";
 import { motion } from "framer-motion";
-import { Database, ChevronRight, Star, Loader2, PlusCircle } from "lucide-react";
+import { Database, ChevronRight, Star, Loader2, PlusCircle, AlertTriangle } from "lucide-react";
 import { useListDataSources } from "@workspace/api-client-react";
 import { AppHeader, PageShell } from "@/components/AppHeader";
 
@@ -74,8 +74,14 @@ export default function Home() {
                             <Star className="w-3 h-3" /> Default
                           </span>
                         )}
+                        {!ds.quoteProfile.complete && (
+                          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-semibold bg-amber-100 text-amber-800" title={`Missing: ${ds.quoteProfile.missing.join(", ")}`}>
+                            <AlertTriangle className="w-3 h-3" /> Quote Profile incomplete
+                          </span>
+                        )}
                       </div>
                       <p className="text-sm text-muted-foreground">
+                        {ds.quoteProfile.companyName ? `Quotes from ${ds.quoteProfile.companyName} · ` : ""}
                         {ds.assetCount.toLocaleString()} assets · {ds.productCount.toLocaleString()} products · updated {new Date(ds.updatedAt).toLocaleDateString()}
                       </p>
                     </div>

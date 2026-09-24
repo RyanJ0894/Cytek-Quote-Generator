@@ -27,6 +27,8 @@ import type {
   ListSerialsParams,
   LookupAssetParams,
   PartsListResult,
+  QuoteProfile,
+  QuoteProfileResult,
   QuoteRequest,
   ReplaceDataSourceWorkbookBody,
   SerialsListResult,
@@ -295,6 +297,267 @@ export const useReplaceDataSourceWorkbook = <
 > => {
   return useMutation(getReplaceDataSourceWorkbookMutationOptions(options));
 };
+
+/**
+ * @summary The seller identity/branding used for documents from this source (null until set up)
+ */
+export const getGetQuoteProfileUrl = (id: string) => {
+  return `/api/data-sources/${id}/profile`;
+};
+
+export const getQuoteProfile = async (
+  id: string,
+  options?: RequestInit,
+): Promise<QuoteProfileResult> => {
+  return customFetch<QuoteProfileResult>(getGetQuoteProfileUrl(id), {
+    ...options,
+    method: "GET",
+  });
+};
+
+export const getGetQuoteProfileQueryKey = (id: string) => {
+  return [`/api/data-sources/${id}/profile`] as const;
+};
+
+export const getGetQuoteProfileQueryOptions = <
+  TData = Awaited<ReturnType<typeof getQuoteProfile>>,
+  TError = ErrorType<unknown>,
+>(
+  id: string,
+  options?: {
+    query?: UseQueryOptions<
+      Awaited<ReturnType<typeof getQuoteProfile>>,
+      TError,
+      TData
+    >;
+    request?: SecondParameter<typeof customFetch>;
+  },
+) => {
+  const { query: queryOptions, request: requestOptions } = options ?? {};
+
+  const queryKey = queryOptions?.queryKey ?? getGetQuoteProfileQueryKey(id);
+
+  const queryFn: QueryFunction<Awaited<ReturnType<typeof getQuoteProfile>>> = ({
+    signal,
+  }) => getQuoteProfile(id, { signal, ...requestOptions });
+
+  return {
+    queryKey,
+    queryFn,
+    enabled: !!id,
+    ...queryOptions,
+  } as UseQueryOptions<
+    Awaited<ReturnType<typeof getQuoteProfile>>,
+    TError,
+    TData
+  > & { queryKey: QueryKey };
+};
+
+export type GetQuoteProfileQueryResult = NonNullable<
+  Awaited<ReturnType<typeof getQuoteProfile>>
+>;
+export type GetQuoteProfileQueryError = ErrorType<unknown>;
+
+/**
+ * @summary The seller identity/branding used for documents from this source (null until set up)
+ */
+
+export function useGetQuoteProfile<
+  TData = Awaited<ReturnType<typeof getQuoteProfile>>,
+  TError = ErrorType<unknown>,
+>(
+  id: string,
+  options?: {
+    query?: UseQueryOptions<
+      Awaited<ReturnType<typeof getQuoteProfile>>,
+      TError,
+      TData
+    >;
+    request?: SecondParameter<typeof customFetch>;
+  },
+): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+  const queryOptions = getGetQuoteProfileQueryOptions(id, options);
+
+  const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & {
+    queryKey: QueryKey;
+  };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+/**
+ * @summary Save the seller identity/branding for this source
+ */
+export const getUpdateQuoteProfileUrl = (id: string) => {
+  return `/api/data-sources/${id}/profile`;
+};
+
+export const updateQuoteProfile = async (
+  id: string,
+  quoteProfile: QuoteProfile,
+  options?: RequestInit,
+): Promise<QuoteProfileResult> => {
+  return customFetch<QuoteProfileResult>(getUpdateQuoteProfileUrl(id), {
+    ...options,
+    method: "PUT",
+    headers: { "Content-Type": "application/json", ...options?.headers },
+    body: JSON.stringify(quoteProfile),
+  });
+};
+
+export const getUpdateQuoteProfileMutationOptions = <
+  TError = ErrorType<unknown>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof updateQuoteProfile>>,
+    TError,
+    { id: string; data: BodyType<QuoteProfile> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationOptions<
+  Awaited<ReturnType<typeof updateQuoteProfile>>,
+  TError,
+  { id: string; data: BodyType<QuoteProfile> },
+  TContext
+> => {
+  const mutationKey = ["updateQuoteProfile"];
+  const { mutation: mutationOptions, request: requestOptions } = options
+    ? options.mutation &&
+      "mutationKey" in options.mutation &&
+      options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey }, request: undefined };
+
+  const mutationFn: MutationFunction<
+    Awaited<ReturnType<typeof updateQuoteProfile>>,
+    { id: string; data: BodyType<QuoteProfile> }
+  > = (props) => {
+    const { id, data } = props ?? {};
+
+    return updateQuoteProfile(id, data, requestOptions);
+  };
+
+  return { mutationFn, ...mutationOptions };
+};
+
+export type UpdateQuoteProfileMutationResult = NonNullable<
+  Awaited<ReturnType<typeof updateQuoteProfile>>
+>;
+export type UpdateQuoteProfileMutationBody = BodyType<QuoteProfile>;
+export type UpdateQuoteProfileMutationError = ErrorType<unknown>;
+
+/**
+ * @summary Save the seller identity/branding for this source
+ */
+export const useUpdateQuoteProfile = <
+  TError = ErrorType<unknown>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof updateQuoteProfile>>,
+    TError,
+    { id: string; data: BodyType<QuoteProfile> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationResult<
+  Awaited<ReturnType<typeof updateQuoteProfile>>,
+  TError,
+  { id: string; data: BodyType<QuoteProfile> },
+  TContext
+> => {
+  return useMutation(getUpdateQuoteProfileMutationOptions(options));
+};
+
+/**
+ * @summary The profile's logo image (404 when none)
+ */
+export const getGetQuoteProfileLogoUrl = (id: string) => {
+  return `/api/data-sources/${id}/logo`;
+};
+
+export const getQuoteProfileLogo = async (
+  id: string,
+  options?: RequestInit,
+): Promise<Blob> => {
+  return customFetch<Blob>(getGetQuoteProfileLogoUrl(id), {
+    ...options,
+    method: "GET",
+  });
+};
+
+export const getGetQuoteProfileLogoQueryKey = (id: string) => {
+  return [`/api/data-sources/${id}/logo`] as const;
+};
+
+export const getGetQuoteProfileLogoQueryOptions = <
+  TData = Awaited<ReturnType<typeof getQuoteProfileLogo>>,
+  TError = ErrorType<unknown>,
+>(
+  id: string,
+  options?: {
+    query?: UseQueryOptions<
+      Awaited<ReturnType<typeof getQuoteProfileLogo>>,
+      TError,
+      TData
+    >;
+    request?: SecondParameter<typeof customFetch>;
+  },
+) => {
+  const { query: queryOptions, request: requestOptions } = options ?? {};
+
+  const queryKey = queryOptions?.queryKey ?? getGetQuoteProfileLogoQueryKey(id);
+
+  const queryFn: QueryFunction<
+    Awaited<ReturnType<typeof getQuoteProfileLogo>>
+  > = ({ signal }) => getQuoteProfileLogo(id, { signal, ...requestOptions });
+
+  return {
+    queryKey,
+    queryFn,
+    enabled: !!id,
+    ...queryOptions,
+  } as UseQueryOptions<
+    Awaited<ReturnType<typeof getQuoteProfileLogo>>,
+    TError,
+    TData
+  > & { queryKey: QueryKey };
+};
+
+export type GetQuoteProfileLogoQueryResult = NonNullable<
+  Awaited<ReturnType<typeof getQuoteProfileLogo>>
+>;
+export type GetQuoteProfileLogoQueryError = ErrorType<unknown>;
+
+/**
+ * @summary The profile's logo image (404 when none)
+ */
+
+export function useGetQuoteProfileLogo<
+  TData = Awaited<ReturnType<typeof getQuoteProfileLogo>>,
+  TError = ErrorType<unknown>,
+>(
+  id: string,
+  options?: {
+    query?: UseQueryOptions<
+      Awaited<ReturnType<typeof getQuoteProfileLogo>>,
+      TError,
+      TData
+    >;
+    request?: SecondParameter<typeof customFetch>;
+  },
+): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+  const queryOptions = getGetQuoteProfileLogoQueryOptions(id, options);
+
+  const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & {
+    queryKey: QueryKey;
+  };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
 
 /**
  * @summary Make a data source the default for Manual Mode

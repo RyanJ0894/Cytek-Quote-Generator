@@ -12,6 +12,8 @@
  * ordinary source the user can update, replace or delete.
  */
 
+import type { QuoteProfile, QuoteProfileSummary } from "./quote-profile.js";
+
 export interface NormalizedAsset {
   /** Lookup key. Trimmed; matched case-insensitively. */
   serialNumber: string;
@@ -119,12 +121,17 @@ export interface StoredDataSource {
 }
 
 /** Data compiled into the server that is saved into the store on first start. */
-export type SeedDataSource = Omit<StoredDataSource, "updatedAt">;
+export type SeedDataSource = Omit<StoredDataSource, "updatedAt"> & {
+  /** Seller identity/branding saved alongside the data (see quote-profile.ts). */
+  quoteProfile?: QuoteProfile;
+};
 
 export interface DataSourceSummary {
   id: string;
   name: string;
   isDefault: boolean;
+  /** Seller identity status for this source; documents cannot be generated until it is complete. */
+  quoteProfile: QuoteProfileSummary;
   importedAt: string;
   /** Last time the source was created or its workbook replaced. */
   updatedAt: string;

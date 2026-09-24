@@ -1,10 +1,8 @@
-# Quote Magic
+# Evans Quote Generator
 
 ## Overview
 
-Quote Magic is a configurable service quoting and PDF contract generator. Enter a serial number, get all customer/contract data auto-filled from an Excel spreadsheet, add parts from a pricing catalog, and generate a branded PDF quote + terms & conditions document.
-
-This Replit instance is currently configured for **Cytek Biosciences** (see `lib/config/src/companies/cytek.ts`) — the underlying product is company-agnostic. See `DEVELOPMENT_NOTES.md` for the architecture and `README.md` for setup instructions.
+Evans Quote Generator is a seller-neutral service quoting and PDF contract generator. Pick a Data Source, enter a serial number, get customer/contract data auto-filled, add parts and services with discounts, and generate a PDF quote branded with that source's Quote Profile. Cytek Biosciences ships as the seeded "Cytek — Current" source with its own profile. See `DEVELOPMENT_NOTES.md` for the architecture and `README.md` for setup instructions.
 
 ## Stack
 
@@ -35,7 +33,6 @@ quote-magic/
 │           ├── components/  # QuoteForm.tsx, ExcelUpload.tsx, Autocomplete.tsx
 │           └── pages/       # home.tsx
 ├── lib/
-│   ├── config/               # @workspace/config — company/branding config (single source of truth)
 │   ├── api-spec/              # OpenAPI spec + Orval codegen config
 │   ├── api-client-react/      # Generated React Query hooks
 │   ├── api-zod/                # Generated Zod schemas

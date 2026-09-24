@@ -1,7 +1,6 @@
 import React, { useRef, useState } from "react";
 import { Link, useLocation } from "wouter";
-import { ArrowLeft, Database, Star, Trash2, Upload, RefreshCw, Loader2, AlertTriangle, FileText } from "lucide-react";
-import { activeCompany } from "@workspace/config";
+import { ArrowLeft, Database, Star, Trash2, Upload, RefreshCw, Loader2, AlertTriangle, FileText, BadgeCheck, Building2 } from "lucide-react";
 import { useListDataSources, getListDataSourcesQueryKey, type DataSourceSummary } from "@workspace/api-client-react";
 import { AppHeader, PageShell } from "@/components/AppHeader";
 import { useQueryClient } from "@tanstack/react-query";
@@ -54,7 +53,7 @@ export default function DataSourcesPage() {
   const onAdd = async (e: React.FormEvent) => {
     e.preventDefault();
     setFormError("");
-    if (!name.trim()) return setFormError("Give the data source a name (e.g. \"Cytek Rev7\").");
+    if (!name.trim()) return setFormError("Give the data source a name (e.g. \"Evans Medical\").");
     if (!file) return setFormError("Choose the workbook to import (.xlsx).");
     const body = new FormData();
     body.append("name", name.trim());
@@ -124,7 +123,7 @@ export default function DataSourcesPage() {
             <AlertTriangle className="w-5 h-5 flex-shrink-0 mt-0.5" />
             <div>
               <p className="font-semibold">Persistent storage is not configured on this server.</p>
-              <p>Data sources you add or change here will be lost when the server restarts (the shipped {activeCompany.shortName} data is re-created). Ask your administrator to set <code>DATABASE_URL</code> to enable saving.</p>
+              <p>Data sources you add or change here will be lost when the server restarts (the shipped Cytek — Current source is re-created). Ask your administrator to set <code>DATABASE_URL</code> to enable saving.</p>
             </div>
           </div>
         )}
@@ -152,6 +151,38 @@ export default function DataSourcesPage() {
                     {ds.unpricedProductCount > 0 && ` (${ds.unpricedProductCount} without a list price)`} · last updated {new Date(ds.updatedAt).toLocaleString()}
                   </p>
                   <p className="text-xs text-muted-foreground truncate">Source: {ds.sourceFiles.join(" + ")}</p>
+
+                  <div className="mt-3 flex items-start gap-3 rounded-lg border border-border/60 bg-slate-50/60 p-3" data-testid={`profile-${ds.id}`}>
+                    {ds.quoteProfile.hasLogo ? (
+                      <img src={`${BASE_URL}/api/data-sources/${encodeURIComponent(ds.id)}/logo`} alt="" className="h-8 max-w-[120px] object-contain flex-shrink-0" />
+                    ) : (
+                      <div className="w-8 h-8 rounded-lg bg-slate-200 flex items-center justify-center text-slate-500 flex-shrink-0"><Building2 className="w-4 h-4" /></div>
+                    )}
+                    <div className="flex-1 min-w-0 text-xs">
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <span className="font-semibold text-slate-700">Quote Profile</span>
+                        {ds.quoteProfile.complete ? (
+                          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full font-semibold bg-emerald-100 text-emerald-800"><BadgeCheck className="w-3 h-3" /> Complete</span>
+                        ) : (
+                          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full font-semibold bg-amber-100 text-amber-800"><AlertTriangle className="w-3 h-3" /> Incomplete: {ds.quoteProfile.missing.join(", ")}</span>
+                        )}
+                      </div>
+                      {ds.quoteProfile.companyName ? (
+                        <p className="text-slate-700 mt-1">
+                          <span className="font-medium">{ds.quoteProfile.companyName}</span>
+                          {ds.quoteProfile.addressLine && ` · ${ds.quoteProfile.addressLine}`}
+                          {ds.quoteProfile.phone && ` · ${ds.quoteProfile.phone}`}
+                          {ds.quoteProfile.email && ` · ${ds.quoteProfile.email}`}
+                          {ds.quoteProfile.website && ` · ${ds.quoteProfile.website}`}
+                        </p>
+                      ) : (
+                        <p className="text-muted-foreground mt-1">No seller identity yet: quotes from this source cannot be generated until the profile is filled in.</p>
+                      )}
+                    </div>
+                    <Link href={`/data-sources/${encodeURIComponent(ds.id)}/profile`} className="flex-shrink-0 px-3 py-1.5 text-xs font-semibold rounded-lg border border-border text-slate-700 hover:bg-white">
+                      Edit Quote Profile
+                    </Link>
+                  </div>
                 </div>
                 <div className="flex items-center gap-2 flex-shrink-0">
                   <Link href={`/quote/${encodeURIComponent(ds.id)}`} title="Create a quote from this source"
@@ -167,7 +198,7 @@ export default function DataSourcesPage() {
                   <button type="button" disabled={busy !== null}
                     onClick={() => { setReplaceTarget(ds); replaceInput.current?.click(); }}
                     className="inline-flex items-center gap-1 px-3 py-1.5 text-xs font-semibold rounded-lg border border-border text-slate-700 hover:bg-slate-50 disabled:opacity-50">
-                    <RefreshCw className="w-3.5 h-3.5" /> {busy === `replace-${ds.id}` ? "Updating…" : "Update file"}
+                    <RefreshCw className="w-3.5 h-3.5" /> {busy === `replace-${ds.id}` ? "Updating…" : "Update workbook"}
                   </button>
                   <button type="button" onClick={() => remove(ds)} disabled={busy !== null} title="Delete"
                     className="p-2 rounded-lg text-slate-400 hover:text-destructive hover:bg-destructive/10 disabled:opacity-50">
@@ -185,13 +216,13 @@ export default function DataSourcesPage() {
             <div className="w-9 h-9 rounded-xl bg-primary/10 flex items-center justify-center text-primary"><Upload className="w-5 h-5" /></div>
             <div>
               <h3 className="text-lg font-bold text-slate-900">Add a data source</h3>
-              <p className="text-xs text-muted-foreground">Name it (e.g. "Cytek — Current") and upload a workbook with "Asset Data" and "Pricing Data" sheets in the Cytek Quoting Tool layout. This is the only time the file is needed.</p>
+              <p className="text-xs text-muted-foreground">Name it and upload a workbook with "Asset Data" and "Pricing Data" sheets (the Cytek Quoting Tool layout is the format supported today). This is the only time the file is needed. Afterwards, fill in the source's Quote Profile so its documents carry the right seller identity.</p>
             </div>
           </div>
           <form onSubmit={onAdd} className="p-6 grid grid-cols-1 sm:grid-cols-5 gap-4 items-end">
             <div className="sm:col-span-2">
               <label className="block text-sm font-semibold text-slate-700 mb-1.5">Name</label>
-              <input value={name} onChange={(e) => setName(e.target.value)} placeholder='e.g. "Cytek — Current"'
+              <input value={name} onChange={(e) => setName(e.target.value)} placeholder='e.g. "Evans Medical"'
                 className="w-full px-4 py-2.5 rounded-xl border border-input bg-slate-50/50 focus:bg-white text-sm focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary" />
             </div>
             <div className="sm:col-span-2">
