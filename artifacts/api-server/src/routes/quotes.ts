@@ -1,7 +1,7 @@
 import { Router, type IRouter, type Request, type Response } from "express";
 import PDFDocument from "pdfkit";
 import { DataSourceError, getDataSourceService } from "../data-sources/service.js";
-import { footerLines, logoBuffer, quoteProfileStatus } from "../data-sources/quote-profile.js";
+import { footerLines, logoBuffer, quoteProfileStatus, termsConfigured } from "../data-sources/quote-profile.js";
 import {
   FONT_BOLD,
   FONT_REG,
@@ -270,7 +270,9 @@ router.post("/generate", async (req: Request, res: Response) => {
     // ═══════════════════════════════════════════════════════════════
     const { title: termsTitle, subtitle: termsSubtitle, intro: termsIntro, sections: termsSections } =
       profile.termsAndConditions;
-    if (!termsIntro && termsSections.length === 0) {
+    if (!termsConfigured(profile)) {
+      // No terms for this seller: the document ends after the quote page. Nothing
+      // is borrowed from any other source's profile.
       doc.end();
       return;
     }
@@ -279,13 +281,18 @@ router.post("/generate", async (req: Request, res: Response) => {
     // First T&C page: logo + date + QUOTE# box
     let ty = drawPageHeader(doc, dateStr, LOGO, TEXT_COLOR, quoteNum);
 
-    // T&C title (centered)
-    doc.font(FONT_BOLD).fontSize(11).fillColor(TEXT_COLOR)
-       .text(termsTitle, ML, ty, { width: PAGE_W - ML * 2, align: "center" });
-    ty += 16;
-    doc.font(FONT_BOLD).fontSize(10)
-       .text(termsSubtitle, ML, ty, { width: PAGE_W - ML * 2, align: "center" });
-    ty += 16;
+    // T&C title and subtitle (centered), each only when the profile has one.
+    if (termsTitle) {
+      doc.font(FONT_BOLD).fontSize(11).fillColor(TEXT_COLOR)
+         .text(termsTitle, ML, ty, { width: PAGE_W - ML * 2, align: "center" });
+      ty += 16;
+    }
+    if (termsSubtitle) {
+      doc.font(FONT_BOLD).fontSize(10).fillColor(TEXT_COLOR)
+         .text(termsSubtitle, ML, ty, { width: PAGE_W - ML * 2, align: "center" });
+      ty += 16;
+    }
+    if (termsTitle || termsSubtitle) ty += 4;
 
     // Helper: start a new T&C continuation page
     const newTCPage = () => {
@@ -302,16 +309,20 @@ router.post("/generate", async (req: Request, res: Response) => {
       }
     };
 
-    // Opening paragraph
-    const introH = doc.font(FONT_REG).fontSize(9.5).heightOfString(termsIntro, { width: PAGE_W - ML * 2 });
-    ensureSpace(introH + 8);
-    doc.font(FONT_REG).fontSize(9.5).fillColor(TEXT_COLOR)
-       .text(termsIntro, ML, ty, { width: PAGE_W - ML * 2 });
-    ty += introH + 10;
+    // Opening paragraph (optional)
+    if (termsIntro) {
+      const introH = doc.font(FONT_REG).fontSize(9.5).heightOfString(termsIntro, { width: PAGE_W - ML * 2 });
+      ensureSpace(introH + 8);
+      doc.font(FONT_REG).fontSize(9.5).fillColor(TEXT_COLOR)
+         .text(termsIntro, ML, ty, { width: PAGE_W - ML * 2 });
+      ty += introH + 10;
+    }
 
     // Numbered sections
     for (const sec of termsSections) {
-      const paragraphs = sec.body.split("\n\n");
+      // Paragraphs are separated by a blank line; single line breaks inside a
+      // paragraph are kept as line breaks.
+      const paragraphs = sec.body.replace(/\r\n/g, "\n").split(/\n{2,}/);
 
       // Measure the first paragraph (heading + first body para) together
       const firstParaText = `${sec.heading} ${paragraphs[0]}`;

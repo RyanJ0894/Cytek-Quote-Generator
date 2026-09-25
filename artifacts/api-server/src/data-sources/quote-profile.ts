@@ -196,8 +196,23 @@ export interface QuoteProfileSummary {
   email: string;
   website: string;
   hasLogo: boolean;
+  /** true when generated quotes from this source will carry Terms & Conditions pages. */
+  hasTerms: boolean;
+  termsSectionCount: number;
   complete: boolean;
   missing: string[];
+}
+
+/**
+ * Terms are optional: a profile is complete without them, but when any
+ * intro or section exists the PDF appends Terms & Conditions pages. Terms
+ * belong to the profile only, so they are never affected by workbook
+ * replacement and never inherited from another source.
+ */
+export function termsConfigured(profile: QuoteProfile | null): boolean {
+  if (!profile) return false;
+  const t = profile.termsAndConditions;
+  return !!t.intro.trim() || t.sections.some((s) => s.heading.trim() || s.body.trim());
 }
 
 export function summarizeQuoteProfile(profile: QuoteProfile | null): QuoteProfileSummary {
@@ -210,6 +225,8 @@ export function summarizeQuoteProfile(profile: QuoteProfile | null): QuoteProfil
     email: profile?.contact.email ?? "",
     website: profile?.contact.website ?? "",
     hasLogo: !!profile?.logo,
+    hasTerms: termsConfigured(profile),
+    termsSectionCount: profile?.termsAndConditions.sections.length ?? 0,
     ...status,
   };
 }

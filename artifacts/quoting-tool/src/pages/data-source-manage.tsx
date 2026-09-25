@@ -141,6 +141,9 @@ export default function DataSourceManagePage() {
                     <p className="text-muted-foreground">No seller identity yet. Quotes from this source cannot be generated until the profile is filled in.</p>
                   )}
                   {!ds.quoteProfile.hasLogo && ds.quoteProfile.companyName && <p className="text-muted-foreground mt-1">No company logo: the short name is printed instead.</p>}
+                  <p className="text-muted-foreground mt-2" data-testid="manage-terms-status">
+                    Terms &amp; Conditions: {ds.quoteProfile.hasTerms ? <><span className="text-success-foreground font-semibold">Configured</span>{ds.quoteProfile.termsSectionCount > 0 && ` (${ds.quoteProfile.termsSectionCount} provisions)`}. Quotes from this source include Terms &amp; Conditions pages after the quote page.</> : <><span className="font-semibold">Not configured</span>. Quotes from this source end after the quote page.</>}
+                  </p>
                 </div>
                 <Link href={profilePath(ds.id)} className={btn} data-testid="manage-edit-profile">Edit Quote Profile</Link>
               </div>

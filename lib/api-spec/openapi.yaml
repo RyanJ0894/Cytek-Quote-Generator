@@ -432,13 +432,18 @@ components:
           type: string
         hasLogo:
           type: boolean
+        hasTerms:
+          type: boolean
+          description: true when generated quotes from this source carry Terms & Conditions pages.
+        termsSectionCount:
+          type: integer
         complete:
           type: boolean
         missing:
           type: array
           items:
             type: string
-      required: [companyName, shortName, addressLine, phone, email, website, hasLogo, complete, missing]
+      required: [companyName, shortName, addressLine, phone, email, website, hasLogo, hasTerms, termsSectionCount, complete, missing]
 
     QuoteProfileLogo:
       type: object

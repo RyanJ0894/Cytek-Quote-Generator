@@ -1,6 +1,6 @@
 import React, { useEffect, useRef, useState } from "react";
 import { Link, useLocation, useParams, useSearch } from "wouter";
-import { ArrowLeft, Loader2, Building2, ImagePlus, Trash2, BadgeCheck, FileText, Settings2, CheckCircle2 } from "lucide-react";
+import { ArrowLeft, Loader2, Building2, ImagePlus, Trash2, BadgeCheck, FileText, Settings2, CheckCircle2, Plus, ArrowUp, ArrowDown, ScrollText } from "lucide-react";
 import { useQueryClient } from "@tanstack/react-query";
 import { useListDataSources, getListDataSourcesQueryKey, type QuoteProfile } from "@workspace/api-client-react";
 import { AppHeader, HeaderLink, PageShell } from "@/components/AppHeader";
@@ -18,19 +18,6 @@ const EMPTY: QuoteProfile = {
   pdfTheme: { tableHeaderBackground: "#f1f1f1", textColor: "#000000", borderColor: "#000000" },
 };
 
-/** Sections are edited as plain text: a line starting with "# " begins a section; the lines after it are its body. */
-function sectionsToText(sections: QuoteProfile["termsAndConditions"]["sections"]): string {
-  return sections.map((s) => `# ${s.heading}\n${s.body}`).join("\n\n");
-}
-function textToSections(text: string): QuoteProfile["termsAndConditions"]["sections"] {
-  const out: { heading: string; body: string }[] = [];
-  for (const line of text.split(/\r?\n/)) {
-    if (line.startsWith("# ")) out.push({ heading: line.slice(2).trim(), body: "" });
-    else if (out.length) out[out.length - 1].body += (out[out.length - 1].body ? "\n" : "") + line;
-  }
-  return out.map((s) => ({ heading: s.heading, body: s.body.trim() })).filter((s) => s.heading || s.body);
-}
-
 /**
  * The profile stores the second address line as one string ("Fremont, CA
  * 94538"), which is exactly what prints. The editor shows it as City / State /
@@ -45,6 +32,23 @@ export function joinCityStateZip(p: { city: string; state: string; zip: string }
   const city = p.city.trim();
   const stateZip = [p.state.trim().toUpperCase(), p.zip.trim()].filter(Boolean).join(" ");
   return [city, stateZip].filter(Boolean).join(", ");
+}
+
+function move<T>(arr: T[], from: number, to: number): T[] {
+  if (to < 0 || to >= arr.length) return arr;
+  const next = arr.slice();
+  const [item] = next.splice(from, 1);
+  next.splice(to, 0, item);
+  return next;
+}
+
+/** "Configured" only when there is real contractual text (an opening paragraph or a provision), matching the server rule. */
+export function TermsStatusBadge({ configured }: { configured: boolean }) {
+  return configured ? (
+    <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-semibold bg-success/15 text-success-foreground" data-testid="terms-status" data-status="configured"><BadgeCheck className="w-3 h-3" /> Terms &amp; Conditions: Configured</span>
+  ) : (
+    <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-semibold bg-muted text-muted-foreground" data-testid="terms-status" data-status="not-configured">Terms &amp; Conditions: Not configured</span>
+  );
 }
 
 const input = "w-full px-3 py-2 rounded-xl border border-input bg-surface focus:bg-card text-sm focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary";
@@ -71,7 +75,7 @@ export default function QuoteProfilePage() {
 
   const [profile, setProfile] = useState<QuoteProfile | null>(null);
   const [loadError, setLoadError] = useState("");
-  const [sectionsText, setSectionsText] = useState("");
+  const [sections, setSections] = useState<QuoteProfile["termsAndConditions"]["sections"]>([]);
   const [bulletsText, setBulletsText] = useState("");
   const [csz, setCsz] = useState({ city: "", state: "", zip: "" });
   const [saving, setSaving] = useState(false);
@@ -88,7 +92,7 @@ export default function QuoteProfilePage() {
         if (cancelled) return;
         const p: QuoteProfile = body.profile ?? EMPTY;
         setProfile(p);
-        setSectionsText(sectionsToText(p.termsAndConditions.sections));
+        setSections(p.termsAndConditions.sections);
         setBulletsText(p.quoteBullets.join("\n"));
         setCsz(splitCityStateZip(p.address.cityStateZip));
         setMissing(body.missing ?? []);
@@ -131,7 +135,7 @@ export default function QuoteProfilePage() {
         ...profile,
         address: { ...profile.address, cityStateZip: joinCityStateZip(csz) },
         quoteBullets: bulletsText.split(/\r?\n/).map((l) => l.trim()).filter(Boolean),
-        termsAndConditions: { ...profile.termsAndConditions, sections: textToSections(sectionsText) },
+        termsAndConditions: { ...profile.termsAndConditions, sections: sections.map((x) => ({ heading: x.heading.trim(), body: x.body.trim() })).filter((x) => x.heading || x.body) },
       };
       const r = await fetch(`${BASE_URL}/api/data-sources/${encodeURIComponent(id)}/profile`, {
         method: "PUT",
@@ -158,6 +162,7 @@ export default function QuoteProfilePage() {
   };
 
   const name = source?.name ?? id;
+  const termsConfigured = !!profile && (!!profile.termsAndConditions.intro.trim() || sections.some((x) => x.heading.trim() || x.body.trim()));
 
   return (
     <PageShell>
@@ -253,27 +258,74 @@ export default function QuoteProfilePage() {
                 </section>
 
                 <section className="bg-card rounded-2xl border border-border shadow-card p-6 space-y-4">
-                  <h3 className="text-lg font-bold text-foreground">Document text</h3>
+                  <h3 className="text-lg font-bold text-foreground">Standard quote notes</h3>
                   <div>
-                    <label className={label}>Notes under the line items (one per line)</label>
+                    <label className={label}>Notes printed under the line items on the quote page (one per line, e.g. validity, currency, tax)</label>
                     <textarea name="quoteBullets" rows={4} className={input} value={bulletsText} onChange={(e) => setBulletsText(e.target.value)} placeholder={"-All prices in USD\n-This quote is valid for 60 days."} />
+                    <p className="text-xs text-muted-foreground mt-1">These are company-level. Anything specific to one quote goes in that quote's Additional Notes.</p>
+                  </div>
+                </section>
+
+                {/* Terms & Conditions: the seller's standard contractual language, appended to every quote from this source as its own pages. */}
+                <section className="bg-card rounded-2xl border border-border shadow-card p-6 space-y-4" data-testid="terms-section">
+                  <div className="flex items-start gap-3 flex-wrap">
+                    <div className="w-9 h-9 rounded-xl bg-primary/10 flex items-center justify-center text-primary"><ScrollText className="w-5 h-5" /></div>
+                    <div className="flex-1 min-w-0">
+                      <h3 className="text-lg font-bold text-foreground">Quote Terms &amp; Conditions</h3>
+                      <p className="text-xs text-muted-foreground">Standard contractual language for <strong>{name}</strong>. When configured it is appended to every quote from this source as Terms &amp; Conditions pages after the quote page, with this company's header and footer. Optional: without it the document simply ends after the quote page.</p>
+                    </div>
+                    <TermsStatusBadge configured={termsConfigured} />
                   </div>
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                    <div><label className={label}>Terms title</label><input name="termsTitle" className={input} value={profile.termsAndConditions.title} onChange={(e) => set({ termsAndConditions: { ...profile.termsAndConditions, title: e.target.value } })} placeholder="GENERAL TERMS AND CONDITIONS OF SALE" /></div>
-                    <div><label className={label}>Terms subtitle</label><input name="termsSubtitle" className={input} value={profile.termsAndConditions.subtitle} onChange={(e) => set({ termsAndConditions: { ...profile.termsAndConditions, subtitle: e.target.value } })} /></div>
+                    <div><label className={label}>Title</label><input name="termsTitle" className={input} value={profile.termsAndConditions.title} onChange={(e) => set({ termsAndConditions: { ...profile.termsAndConditions, title: e.target.value } })} placeholder="GENERAL TERMS AND CONDITIONS OF SALE" /></div>
+                    <div><label className={label}>Subtitle</label><input name="termsSubtitle" className={input} value={profile.termsAndConditions.subtitle} onChange={(e) => set({ termsAndConditions: { ...profile.termsAndConditions, subtitle: e.target.value } })} placeholder="(TIME AND MATERIALS)" /></div>
                   </div>
                   <div>
-                    <label className={label}>Terms opening paragraph</label>
-                    <textarea name="termsIntro" rows={3} className={input} value={profile.termsAndConditions.intro} onChange={(e) => set({ termsAndConditions: { ...profile.termsAndConditions, intro: e.target.value } })} />
+                    <label className={label}>Opening paragraph</label>
+                    <textarea name="termsIntro" rows={3} className={input} value={profile.termsAndConditions.intro} onChange={(e) => set({ termsAndConditions: { ...profile.termsAndConditions, intro: e.target.value } })} placeholder="These terms apply to the purchase of the products and services listed on the attached quotation…" />
                   </div>
-                  <div>
-                    <label className={label}>Terms sections (start each with a line like <code># 1. PAYMENT TERMS:</code>; leave empty for no terms pages)</label>
-                    <textarea name="termsSections" rows={10} className={`${input} font-mono text-xs`} value={sectionsText} onChange={(e) => setSectionsText(e.target.value)} />
+
+                  <div className="space-y-3" data-testid="terms-sections">
+                    <label className={label}>Provisions (each has a heading, printed bold, and body text; blank line = new paragraph)</label>
+                    {sections.length === 0 && (
+                      <p className="text-sm text-muted-foreground rounded-lg border border-dashed border-border p-4 text-center">No provisions yet. Add one for each numbered clause, e.g. "1. PAYMENT TERMS:".</p>
+                    )}
+                    {sections.map((sec, i) => (
+                      <div key={i} className="rounded-xl border border-border bg-surface p-3 space-y-2" data-testid={`terms-section-${i}`}>
+                        <div className="flex items-center gap-2">
+                          <span className="text-xs font-semibold text-muted-foreground w-6 text-right">{i + 1}.</span>
+                          <input
+                            name={`terms.${i}.heading`}
+                            className={`${input} font-semibold`}
+                            value={sec.heading}
+                            onChange={(e) => setSections(sections.map((x, j) => (j === i ? { ...x, heading: e.target.value } : x)))}
+                            placeholder={`${i + 1}. HEADING:`}
+                            aria-label={`Provision ${i + 1} heading`}
+                          />
+                          <button type="button" className="p-1.5 rounded-lg text-muted-foreground hover:text-foreground hover:bg-muted disabled:opacity-30" disabled={i === 0} onClick={() => setSections(move(sections, i, i - 1))} title="Move up" aria-label="Move up"><ArrowUp className="w-4 h-4" /></button>
+                          <button type="button" className="p-1.5 rounded-lg text-muted-foreground hover:text-foreground hover:bg-muted disabled:opacity-30" disabled={i === sections.length - 1} onClick={() => setSections(move(sections, i, i + 1))} title="Move down" aria-label="Move down"><ArrowDown className="w-4 h-4" /></button>
+                          <button type="button" className="p-1.5 rounded-lg text-muted-foreground hover:text-destructive hover:bg-destructive/10" onClick={() => setSections(sections.filter((_, j) => j !== i))} title="Remove provision" aria-label="Remove provision"><Trash2 className="w-4 h-4" /></button>
+                        </div>
+                        <textarea
+                          name={`terms.${i}.body`}
+                          rows={Math.min(12, Math.max(3, sec.body.split("\n").length + 1))}
+                          className={`${input} text-sm`}
+                          value={sec.body}
+                          onChange={(e) => setSections(sections.map((x, j) => (j === i ? { ...x, body: e.target.value } : x)))}
+                          placeholder="Body of this provision. Leave a blank line between paragraphs."
+                          aria-label={`Provision ${i + 1} body`}
+                        />
+                      </div>
+                    ))}
+                    <button type="button" onClick={() => setSections([...sections, { heading: `${sections.length + 1}. `, body: "" }])} className={secondaryBtn} data-testid="add-provision">
+                      <Plus className="w-4 h-4" /> Add provision
+                    </button>
                   </div>
-                  <div className="grid grid-cols-3 gap-4">
+
+                  <div className="grid grid-cols-3 gap-4 pt-2 border-t border-border/60">
                     {(["tableHeaderBackground", "textColor", "borderColor"] as const).map((k) => (
                       <div key={k}>
-                        <label className={label}>{k === "tableHeaderBackground" ? "Table header" : k === "textColor" ? "Text" : "Borders"}</label>
+                        <label className={label}>{k === "tableHeaderBackground" ? "PDF table header" : k === "textColor" ? "PDF text" : "PDF borders"}</label>
                         <input type="color" name={k} value={profile.pdfTheme[k]} onChange={(e) => set({ pdfTheme: { ...profile.pdfTheme, [k]: e.target.value } })} className="h-9 w-full rounded-lg border border-input bg-card" />
                       </div>
                     ))}
