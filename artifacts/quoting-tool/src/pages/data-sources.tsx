@@ -128,19 +128,46 @@ export default function DataSourcesPage() {
           )}
           <ul className="divide-y divide-border/60">
             {data?.dataSources.map((ds) => (
-              <li key={ds.id} className="px-6 py-4 flex flex-col sm:flex-row sm:items-start gap-4" data-testid={`ds-${ds.id}`}>
-                <div className="flex-1 min-w-0">
+              <li key={ds.id} className="px-6 py-4 flex flex-col gap-3" data-testid={`ds-${ds.id}`}>
+                {/* Title row: name + status on the left, management actions on the right; the profile block gets the full width below. */}
+                <div className="flex items-start justify-between gap-4 flex-wrap">
                   <div className="flex items-center gap-2 flex-wrap">
                     <Link href={managePath(ds.id)} className="font-semibold text-foreground hover:text-primary hover:underline underline-offset-2" title="Edit Data Source">{ds.name}</Link>
                     {ds.isDefault && <DefaultBadge />}
                   </div>
+                  <div className="flex items-center gap-2 flex-shrink-0 flex-wrap">
+                    <Link href={quotePath(ds.id)} title="Create a quote from this source"
+                      className="inline-flex items-center gap-1 px-3 py-1.5 text-xs font-semibold rounded-lg bg-primary/10 text-primary hover:bg-primary/20">
+                      <FileText className="w-3.5 h-3.5" /> Quote
+                    </Link>
+                    <Link href={managePath(ds.id)} title="Edit Data Source" data-testid={`manage-${ds.id}`}
+                      className="inline-flex items-center gap-1 px-3 py-1.5 text-xs font-semibold rounded-lg border border-border text-secondary-foreground hover:bg-muted/60">
+                      <Settings2 className="w-3.5 h-3.5" /> Manage
+                    </Link>
+                    {!ds.isDefault && (
+                      <button type="button" onClick={() => actions.setDefault(ds)} disabled={busy}
+                        className="px-3 py-1.5 text-xs font-semibold rounded-lg border border-border text-secondary-foreground hover:bg-muted/60 disabled:opacity-50">
+                        {actions.busy === `default-${ds.id}` ? "…" : "Set as default"}
+                      </button>
+                    )}
+                    <button type="button" disabled={busy} onClick={() => actions.replaceWorkbook(ds)}
+                      className="inline-flex items-center gap-1 px-3 py-1.5 text-xs font-semibold rounded-lg border border-border text-secondary-foreground hover:bg-muted/60 disabled:opacity-50">
+                      <RefreshCw className="w-3.5 h-3.5" /> {actions.busy === `replace-${ds.id}` ? "Updating…" : "Update workbook"}
+                    </button>
+                    <button type="button" onClick={() => actions.confirmDelete(ds)} disabled={busy} title="Delete" data-testid={`delete-${ds.id}`}
+                      className="p-2 rounded-lg text-muted-foreground hover:text-destructive hover:bg-destructive/10 disabled:opacity-50">
+                      <Trash2 className="w-4 h-4" />
+                    </button>
+                  </div>
+                </div>
+                <div className="min-w-0">
                   <p className="text-xs text-muted-foreground mt-1">
                     {ds.assetCount.toLocaleString()} assets · {ds.productCount.toLocaleString()} products
                     {ds.unpricedProductCount > 0 && ` (${ds.unpricedProductCount} without a list price)`} · last updated {new Date(ds.updatedAt).toLocaleString()}
                   </p>
                   <p className="text-xs text-muted-foreground truncate">Source: {ds.sourceFiles.join(" + ")}</p>
 
-                  <div className="mt-3 flex items-start gap-3 rounded-lg border border-border/60 bg-surface p-3" data-testid={`profile-${ds.id}`}>
+                  <div className="mt-3 flex flex-col sm:flex-row sm:items-start gap-3 rounded-lg border border-border/60 bg-surface p-3" data-testid={`profile-${ds.id}`}>
                     {ds.quoteProfile.hasLogo ? (
                       <img src={logoUrl(ds.id)} alt="" className="h-8 max-w-[120px] object-contain flex-shrink-0 rounded bg-white p-0.5" title="Document logo (shown as it prints)" />
                     ) : (
@@ -151,6 +178,10 @@ export default function DataSourcesPage() {
                         <span className="font-semibold text-secondary-foreground">Quote Profile</span>
                         <ProfileBadge ds={ds} />
                       </div>
+                      <p className="mt-1 text-muted-foreground" data-testid={`terms-status-${ds.id}`}>
+                        Terms &amp; Conditions: {ds.quoteProfile.hasTerms ? <span className="text-success-foreground font-semibold">Configured</span> : <span className="font-semibold">Not configured</span>}
+                        {ds.quoteProfile.hasTerms && ds.quoteProfile.termsSectionCount > 0 && ` (${ds.quoteProfile.termsSectionCount} provisions)`}
+                      </p>
                       {ds.quoteProfile.companyName ? (
                         <p className="text-secondary-foreground mt-1">
                           <span className="font-medium">{ds.quoteProfile.companyName}</span>
@@ -163,34 +194,10 @@ export default function DataSourcesPage() {
                         <p className="text-muted-foreground mt-1">No seller identity yet: quotes from this source cannot be generated until the profile is filled in.</p>
                       )}
                     </div>
-                    <Link href={profilePath(ds.id)} className={cn("flex-shrink-0 px-3 py-1.5 text-xs font-semibold rounded-lg border text-secondary-foreground hover:bg-card", ds.quoteProfile.complete ? "border-border" : "border-warning/50")}>
+                    <Link href={profilePath(ds.id)} className={cn("flex-shrink-0 self-start px-3 py-1.5 text-xs font-semibold rounded-lg border text-secondary-foreground hover:bg-card", ds.quoteProfile.complete ? "border-border" : "border-warning/50")}>
                       {ds.quoteProfile.complete ? "Edit Quote Profile" : "Complete Quote Profile"}
                     </Link>
                   </div>
-                </div>
-                <div className="flex items-center gap-2 flex-shrink-0 flex-wrap">
-                  <Link href={quotePath(ds.id)} title="Create a quote from this source"
-                    className="inline-flex items-center gap-1 px-3 py-1.5 text-xs font-semibold rounded-lg bg-primary/10 text-primary hover:bg-primary/20">
-                    <FileText className="w-3.5 h-3.5" /> Quote
-                  </Link>
-                  <Link href={managePath(ds.id)} title="Edit Data Source" data-testid={`manage-${ds.id}`}
-                    className="inline-flex items-center gap-1 px-3 py-1.5 text-xs font-semibold rounded-lg border border-border text-secondary-foreground hover:bg-muted/60">
-                    <Settings2 className="w-3.5 h-3.5" /> Manage
-                  </Link>
-                  {!ds.isDefault && (
-                    <button type="button" onClick={() => actions.setDefault(ds)} disabled={busy}
-                      className="px-3 py-1.5 text-xs font-semibold rounded-lg border border-border text-secondary-foreground hover:bg-muted/60 disabled:opacity-50">
-                      {actions.busy === `default-${ds.id}` ? "…" : "Set as default"}
-                    </button>
-                  )}
-                  <button type="button" disabled={busy} onClick={() => actions.replaceWorkbook(ds)}
-                    className="inline-flex items-center gap-1 px-3 py-1.5 text-xs font-semibold rounded-lg border border-border text-secondary-foreground hover:bg-muted/60 disabled:opacity-50">
-                    <RefreshCw className="w-3.5 h-3.5" /> {actions.busy === `replace-${ds.id}` ? "Updating…" : "Update workbook"}
-                  </button>
-                  <button type="button" onClick={() => actions.confirmDelete(ds)} disabled={busy} title="Delete" data-testid={`delete-${ds.id}`}
-                    className="p-2 rounded-lg text-muted-foreground hover:text-destructive hover:bg-destructive/10 disabled:opacity-50">
-                    <Trash2 className="w-4 h-4" />
-                  </button>
                 </div>
               </li>
             ))}

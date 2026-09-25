@@ -117,6 +117,80 @@ test("C. alternating sources never leaks branding", async () => {
   assert.equal(b.pages, 1);
 });
 
+const TEST_TERMS = {
+  title: "TEST TERMS & CONDITIONS",
+  subtitle: "(TEST PLACEHOLDER — NOT APPROVED LEGAL TERMS)",
+  intro: "",
+  sections: [
+    { heading: "1. Payment Terms —", body: "Payment is due according to the terms stated on the applicable invoice." },
+    { heading: "2. Quote Validity —", body: "This test quotation is valid for 30 days from the quote date." },
+    { heading: "3. Shipping —", body: "Shipping and handling charges, when applicable, will be identified on the quotation or invoice." },
+    { heading: "4. Acceptance —", body: "Acceptance of this quotation confirms the customer's authorization to proceed with the products or services described herein.\n\nSecond paragraph of the acceptance clause.\nWith a kept line break." },
+  ],
+};
+
+test("D. terms belong to the profile: Collab World Medical gets its own Terms pages, Cytek keeps its own, and a workbook update leaves terms untouched", async () => {
+  const svc = new DataSourceService(new MemoryDataSourceStore(), [cytekSeed]);
+  setDataSourceService(svc);
+  await svc.importFromWorkbook("Collab World Medical", { buffer: REV5, fileName: "collab.xlsx" });
+  const profile = {
+    companyName: "Collab World Medical LLC",
+    shortName: "Collab World Medical",
+    address: { street: "500 Collaboration Way", cityStateZip: "Denver, CO 80202" },
+    contact: { phone: "(303) 555-0100", fax: "", website: "www.collabworld.test", email: "quotes@collabworld.test" },
+    logo: null,
+    quoteBullets: ["-All prices in USD"],
+    termsAndConditions: TEST_TERMS,
+    pdfTheme: { tableHeaderBackground: "#e8e8e8", textColor: "#000000", borderColor: "#000000" },
+  };
+  let put = await fetch(baseUrl + "/api/data-sources/collab-world-medical/profile", { method: "PUT", headers: { "content-type": "application/json" }, body: JSON.stringify(profile) });
+  assert.equal(put.status, 200);
+  const listing = (await (await fetch(baseUrl + "/api/data-sources")).json()) as any;
+  const collab = listing.dataSources.find((d: any) => d.id === "collab-world-medical");
+  assert.equal(collab.quoteProfile.hasTerms, true);
+  assert.equal(collab.quoteProfile.termsSectionCount, 4);
+  assert.equal(listing.dataSources.find((d: any) => d.id === "cytek").quoteProfile.hasTerms, true);
+
+  // Collab World quote: page 1 quote, page 2 its own TEST terms, nothing Cytek.
+  const r = await generate(quote("collab-world-medical", { serialNumber: "8470060146", serviceType: "PM Service", servicePrice: 1500 }));
+  assert.equal(r.status, 200);
+  assert.equal(r.pages, 2, "quote page + one Terms page");
+  assert.match(r.text, /Collab World Medical LLC \| Offices in Denver, CO 80202/);
+  assert.match(r.text, /Serial Number: 8470060146/);
+  assert.match(r.text, /TEST TERMS & CONDITIONS/);
+  assert.match(r.text, /TEST PLACEHOLDER/);
+  assert.match(r.text, /1\. Payment Terms — Payment is due according to the terms stated on the applicable invoice\./);
+  assert.match(r.text, /4\. Acceptance — Acceptance of this quotation/);
+  assert.match(r.text, /Second paragraph of the acceptance clause\./);
+  assert.doesNotMatch(r.text, /cytek/i, "no Cytek branding or contractual language");
+  assert.doesNotMatch(r.text, /GENERAL TERMS AND CONDITIONS OF SALE|Wells Fargo|flow cytometer/i);
+
+  // Cytek: its own terms, nothing from Collab World.
+  const c = await generate(quote("cytek"));
+  assert.equal(c.pages, 4);
+  assert.match(c.text, /GENERAL TERMS AND CONDITIONS OF SALE/);
+  assert.match(c.text, /2\. PAYMENT TERMS: Terms are net 30 days/);
+  assert.doesNotMatch(c.text, /Collab World|TEST TERMS/);
+
+  // Replacing the workbook changes the catalog only; the terms stay exactly as saved.
+  await svc.replaceWorkbook("collab-world-medical", { buffer: REV5, fileName: "collab-v2.xlsx" });
+  const after = (await (await fetch(baseUrl + "/api/data-sources/collab-world-medical/profile")).json()) as any;
+  assert.deepEqual(after.profile.termsAndConditions, TEST_TERMS);
+  const r2 = await generate(quote("collab-world-medical", { serialNumber: "8470060146" }));
+  assert.equal(r2.pages, 2);
+  assert.match(r2.text, /TEST TERMS & CONDITIONS/);
+
+  // Removing the terms: the document ends after the quote page, no blank page.
+  put = await fetch(baseUrl + "/api/data-sources/collab-world-medical/profile", { method: "PUT", headers: { "content-type": "application/json" }, body: JSON.stringify({ ...profile, termsAndConditions: { title: "Unused title", subtitle: "", intro: "", sections: [] } }) });
+  assert.equal(put.status, 200);
+  const r3 = await generate(quote("collab-world-medical", { serialNumber: "8470060146" }));
+  assert.equal(r3.pages, 1, "a title alone is not terms: no empty Terms page");
+  assert.doesNotMatch(r3.text, /Unused title|TEST TERMS/);
+  assert.equal((await (await fetch(baseUrl + "/api/data-sources")).json() as any).dataSources.find((d: any) => d.id === "collab-world-medical").quoteProfile.hasTerms, false);
+
+  setDataSourceService(new DataSourceService(new MemoryDataSourceStore(), [cytekSeed]));
+});
+
 test("unknown data source is a 404, and omitting it uses the default source", async () => {
   assert.equal((await generate(quote("nope"))).status, 404);
   const r = await generate({ customerName: "X", serialNumber: "S", parts: [] });

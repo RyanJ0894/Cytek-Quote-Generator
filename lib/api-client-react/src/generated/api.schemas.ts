@@ -46,6 +46,9 @@ export interface QuoteProfileSummary {
   email: string;
   website: string;
   hasLogo: boolean;
+  /** true when generated quotes from this source carry Terms & Conditions pages. */
+  hasTerms: boolean;
+  termsSectionCount: number;
   complete: boolean;
   missing: string[];
 }
