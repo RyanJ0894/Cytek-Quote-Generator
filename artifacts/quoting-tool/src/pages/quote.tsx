@@ -40,7 +40,7 @@ export default function QuotePage() {
           <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }}>
             <div className="mb-8">
               <h2 className="text-3xl font-bold text-foreground font-display mb-2">Create New Quote</h2>
-              <p className="text-muted-foreground">Type a serial number, part number or service and the details fill in from the selected Data Source. Everything stays editable.</p>
+              <p className="text-muted-foreground">Select a serial number, part number or service and the details fill in from the selected Data Source. Everything stays editable.</p>
             </div>
             {!source.quoteProfile.complete && (
               <div className="mb-8 flex flex-col sm:flex-row sm:items-center gap-3 rounded-xl border border-warning/40 bg-warning/10 px-4 py-3" role="status" data-testid="profile-incomplete-top">

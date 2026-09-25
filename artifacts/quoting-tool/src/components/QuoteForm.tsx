@@ -407,7 +407,7 @@ export function QuoteForm({ dataSourceId, sources, onSwitch }: QuoteFormProps) {
               value={watch("serialNumber")}
               onChange={(val) => setValue("serialNumber", val, { shouldValidate: true })}
               getDisplayValue={(item: string) => item}
-              placeholder="Type or select serial..."
+              placeholder="Select a serial number..."
               aria-label="Serial Number"
               name="serialNumber"
               disabled={isLoadingSerials}

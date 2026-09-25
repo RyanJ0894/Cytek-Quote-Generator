@@ -1,7 +1,7 @@
 import React, { useState } from "react";
 import { Link, useLocation } from "wouter";
 import { motion } from "framer-motion";
-import { Database, ChevronRight, Loader2, PlusCircle, AlertTriangle, Settings2, BadgeCheck, RefreshCw, Trash2, FileText } from "lucide-react";
+import { Database, ChevronRight, Loader2, PlusCircle, AlertTriangle, Settings2, BadgeCheck, RefreshCw, Trash2, FileText, ArrowRight } from "lucide-react";
 import { useListDataSources, type DataSourceSummary } from "@workspace/api-client-react";
 import { AppHeader, PageShell } from "@/components/AppHeader";
 import { SourceMenu } from "@/components/SourceMenu";
@@ -114,9 +114,21 @@ export default function Home() {
               ))}
             </ul>
 
-            <p className="text-center text-xs text-muted-foreground mt-8">
-              Need to add or update a source? Use <Link href="/data-sources" className="underline underline-offset-2 hover:text-foreground">Data Sources</Link>.
-            </p>
+            {/* Secondary call to action: managing sources matters, but must not compete with picking one above. */}
+            <div className="mt-10 max-w-2xl mx-auto flex flex-col sm:flex-row items-center justify-between gap-4 rounded-2xl border border-border bg-card/60 px-6 py-5" data-testid="manage-sources-cta">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-xl bg-primary/10 flex items-center justify-center text-primary flex-shrink-0">
+                  <Database className="w-5 h-5" />
+                </div>
+                <p className="text-base font-medium text-foreground">Need to add or update a source?</p>
+              </div>
+              <Link
+                href="/data-sources"
+                className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl text-sm font-semibold border border-primary/40 text-primary hover:bg-primary/10 hover:border-primary transition-colors whitespace-nowrap"
+              >
+                Use Data Sources <ArrowRight className="w-4 h-4" />
+              </Link>
+            </div>
           </motion.div>
         )}
       </main>
