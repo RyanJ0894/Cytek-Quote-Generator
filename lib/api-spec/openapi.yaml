@@ -402,6 +402,9 @@ components:
           type: integer
         unpricedProductCount:
           type: integer
+        warning:
+          type: string
+          description: Present when the stored record was malformed and had to be repaired or defaulted for display.
       required:
         - id
         - name
@@ -577,7 +580,11 @@ components:
             error:
               type: string
               nullable: true
-          required: [selectedVar, candidateVars, lookedFor, error]
+            malformedSources:
+              type: array
+              items:
+                type: string
+          required: [selectedVar, candidateVars, lookedFor, error, malformedSources]
       required:
         - dataSources
         - defaultId

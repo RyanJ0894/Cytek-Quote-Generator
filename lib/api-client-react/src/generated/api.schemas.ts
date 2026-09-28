@@ -65,6 +65,8 @@ export interface DataSourceSummary {
   assetCount: number;
   productCount: number;
   unpricedProductCount: number;
+  /** Present when the stored record was malformed and had to be repaired or defaulted for display. */
+  warning?: string;
 }
 
 export interface QuoteProfileLogo {
@@ -132,6 +134,7 @@ export type DataSourceListingStorage = {
   candidateVars: string[];
   lookedFor: string[];
   error: string | null;
+  malformedSources: string[];
 };
 
 export interface DataSourceListing {

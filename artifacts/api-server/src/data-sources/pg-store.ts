@@ -33,9 +33,17 @@ export function isConnectionError(err: unknown): boolean {
   );
 }
 
-/** jsonb values come back parsed by pg/PGlite; tolerate a string just in case. */
+/** jsonb values come back parsed by pg/PGlite; tolerate a string (even a double-encoded one) just in case. */
 function json<T>(v: unknown): T {
-  return (typeof v === "string" ? JSON.parse(v) : v) as T;
+  let out: unknown = v;
+  for (let i = 0; i < 3 && typeof out === "string"; i++) {
+    try {
+      out = JSON.parse(out);
+    } catch {
+      break;
+    }
+  }
+  return out as T;
 }
 
 /**

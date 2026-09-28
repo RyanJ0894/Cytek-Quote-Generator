@@ -14,4 +14,5 @@ export type DataSourceListingStorage = {
   candidateVars: string[];
   lookedFor: string[];
   error: string | null;
+  malformedSources: string[];
 };

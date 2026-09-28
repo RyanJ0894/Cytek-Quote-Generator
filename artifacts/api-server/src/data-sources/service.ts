@@ -11,7 +11,7 @@
 import { createHash } from "node:crypto";
 import xlsx from "xlsx";
 import pg from "pg";
-import type { DataSource, DataSourceSummary, SeedDataSource, StoredDataSource } from "./types.js";
+import type { DataSource, DataSourceSummary, SeedDataSource, StoredDataSource, DataSourceManifest } from "./types.js";
 import {
   normalizeQuoteProfile,
   QuoteProfileError,
@@ -121,17 +121,25 @@ export class DataSourceService {
   }
 
   private summarize(h: StoredDataSourceHeader, defaultId: string | null, profile: QuoteProfileSummary): DataSourceSummary {
+    const { manifest, problem } = normalizeManifest(h.manifest, h.id);
+    if (problem) {
+      console.warn(`[data-sources] Source "${h.id}" has a malformed stored manifest: ${problem}`);
+      if (!storageDiagnostics.malformedSources.includes(h.id)) storageDiagnostics = { ...storageDiagnostics, malformedSources: [...storageDiagnostics.malformedSources, h.id] };
+    } else if (storageDiagnostics.malformedSources.includes(h.id)) {
+      storageDiagnostics = { ...storageDiagnostics, malformedSources: storageDiagnostics.malformedSources.filter((x) => x !== h.id) };
+    }
     return {
       id: h.id,
       name: h.name,
       isDefault: h.id === defaultId,
       quoteProfile: profile,
-      importedAt: h.manifest.importedAt,
+      importedAt: manifest.importedAt || h.updatedAt,
       updatedAt: h.updatedAt,
-      sourceFiles: h.manifest.sources.map((s) => s.label),
-      assetCount: h.manifest.counts.assets,
-      productCount: h.manifest.counts.products,
-      unpricedProductCount: h.manifest.counts.unpricedProducts,
+      sourceFiles: manifest.sources.map((s) => s?.label ?? s?.fileName ?? "").filter(Boolean),
+      assetCount: manifest.counts.assets ?? 0,
+      productCount: manifest.counts.products ?? 0,
+      unpricedProductCount: manifest.counts.unpricedProducts ?? 0,
+      ...(problem ? { warning: `Stored record is incomplete (${problem}). Re-import its workbook with Update workbook to repair it.` } : {}),
     };
   }
 
@@ -139,7 +147,10 @@ export class DataSourceService {
     const all = await this.headers();
     const defaultId = await this.getDefaultId();
     const dataSources = (
-      await Promise.all(all.map(async (h) => this.summarize(h, defaultId, summarizeQuoteProfile(await this.store.getProfile(h.id)))))
+      await Promise.all(all.map(async (h) => this.summarize(h, defaultId, summarizeQuoteProfile(await this.store.getProfile(h.id).catch((err) => {
+        console.warn(`[data-sources] Could not read the Quote Profile of "${h.id}": ${err instanceof Error ? err.message : String(err)}`);
+        return null;
+      })))))
     ).sort((a, b) => Number(b.isDefault) - Number(a.isDefault) || a.name.localeCompare(b.name));
     return { dataSources, defaultId, persistent: this.store.persistent, storeKind: this.store.kind, storage: getStorageDiagnostics() };
   }
@@ -161,7 +172,7 @@ export class DataSourceService {
 
     const record = await this.store.get(wanted);
     if (!record) throw new DataSourceError(404, `Unknown data source: ${wanted}`);
-    const ds = createStaticDataSource({ manifest: record.manifest, assets: record.assets, products: record.products, name: record.name });
+    const ds = createStaticDataSource({ manifest: normalizeManifest(record.manifest, record.id).manifest, assets: record.assets, products: record.products, name: record.name });
     this.cache.set(wanted, { version: record.updatedAt, ds });
     return ds;
   }
@@ -332,8 +343,61 @@ export interface StorageDiagnostics {
   candidateVars: string[];
   lookedFor: string[];
   error: string | null;
+  /** Ids of stored sources whose manifest could not be read as saved (repaired for display). */
+  malformedSources: string[];
 }
-let storageDiagnostics: StorageDiagnostics = { selectedVar: null, candidateVars: [], lookedFor: DATABASE_URL_VARS, error: null };
+let storageDiagnostics: StorageDiagnostics = { selectedVar: null, candidateVars: [], lookedFor: DATABASE_URL_VARS, error: null, malformedSources: [] };
+
+const EMPTY_COUNTS: DataSourceManifest["counts"] = {
+  assets: 0, products: 0, pricedProducts: 0, unpricedProducts: 0, services: 0,
+  assetsEnrichedFromSupplement: 0, assetsEnrichedWithDifferentAccountName: 0, assetsFacilityDefaultedToAccount: 0,
+};
+
+/**
+ * A stored manifest as the code expects it, whatever shape the row actually
+ * holds. A manifest saved as a JSON string is decoded; missing pieces are
+ * defaulted so the listing can still render the source, and `problem` says
+ * what was wrong so it can be shown and fixed. One bad row must never take
+ * the whole listing (and the app) down.
+ */
+export function normalizeManifest(raw: unknown, id: string): { manifest: DataSourceManifest; problem: string | null } {
+  let value: unknown = raw;
+  let decoded = false;
+  for (let i = 0; i < 3 && typeof value === "string"; i++) {
+    try {
+      value = JSON.parse(value);
+      decoded = true;
+    } catch {
+      break;
+    }
+  }
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    const what = raw === null || raw === undefined ? "manifest missing" : `manifest is a ${Array.isArray(value) ? "array" : typeof value}, not an object`;
+    return {
+      manifest: { id, name: id, importedAt: "", sources: [], counts: EMPTY_COUNTS, rejected: {}, fieldMappings: { assets: {}, products: {} }, notes: [] },
+      problem: what,
+    };
+  }
+  const m = value as Partial<DataSourceManifest> & Record<string, unknown>;
+  const problems: string[] = [];
+  const sources = Array.isArray(m.sources) ? m.sources : (problems.push("sources missing"), []);
+  const counts = m.counts && typeof m.counts === "object" ? { ...EMPTY_COUNTS, ...(m.counts as object) } : (problems.push("counts missing"), EMPTY_COUNTS);
+  const problem = problems.length ? `${problems.join(", ")} (keys present: ${Object.keys(m).join(", ") || "none"})` : null;
+  if (!problems.length && !decoded) return { manifest: value as DataSourceManifest, problem: null };
+  return {
+    manifest: {
+      id: typeof m.id === "string" ? m.id : id,
+      name: typeof m.name === "string" ? m.name : id,
+      importedAt: typeof m.importedAt === "string" ? m.importedAt : "",
+      sources,
+      counts,
+      rejected: m.rejected && typeof m.rejected === "object" ? (m.rejected as DataSourceManifest["rejected"]) : {},
+      fieldMappings: m.fieldMappings && typeof m.fieldMappings === "object" ? (m.fieldMappings as DataSourceManifest["fieldMappings"]) : { assets: {}, products: {} },
+      notes: Array.isArray(m.notes) ? (m.notes as string[]) : [],
+    },
+    problem,
+  };
+}
 export const getStorageDiagnostics = (): StorageDiagnostics => storageDiagnostics;
 export const reportStorageError = (err: unknown): void => {
   storageDiagnostics = { ...storageDiagnostics, error: err instanceof Error ? err.message : String(err) };
@@ -373,6 +437,7 @@ function createStoreFromEnv(): DataSourceStore {
     candidateVars: Object.keys(process.env).filter((k) => /(DATABASE|POSTGRES|NEON|^PG)/i.test(k)).sort(),
     lookedFor: DATABASE_URL_VARS,
     error: null,
+    malformedSources: [],
   };
   if (db) {
     console.info(`[data-sources] Using Postgres from ${db.name} (persistent).`);
