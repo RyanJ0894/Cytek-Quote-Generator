@@ -189,12 +189,12 @@ describe("DataSourceService", () => {
     const b = new DataSourceService(new PgDataSourceStore(pg), [cytekSeed]);
     assert.equal((await b.resolve()).id, "persisted");
     assert.equal((await b.resolve()).lookupAsset("U0286")?.facilityName, "MSU");
-    const rows = await pg.query<{ id: string; n: number }>("select id, jsonb_array_length(assets) as n from data_sources");
+    const rows = await pg.query<{ id: string; n: number }>("select id, jsonb_array_length(assets) as n from eqg_data_sources");
     assert.deepEqual(rows.rows, [{ id: "persisted", n: 3585 }]);
-    const settings = await pg.query<{ key: string }>("select key from app_settings order by key");
-    assert.deepEqual(settings.rows.map((r) => r.key), ["default_data_source_id", "deleted:company-b", "deleted:company-b-2", "deleted:cytek", "seeded:cytek"], "deletions are recorded as audit markers");
+    const settings = await pg.query<{ key: string }>("select key from eqg_app_settings order by key");
+    assert.deepEqual(settings.rows.map((r) => r.key), ["default_data_source_id", "deleted:company-b", "deleted:company-b-2", "deleted:cytek", "migrated:legacy-tables", "seeded:cytek"], "deletions are recorded as audit markers");
     await b.setProfile("persisted", { companyName: "P Inc" });
-    const profiles = await pg.query<{ data_source_id: string; name: string }>("select data_source_id, profile->>'companyName' as name from quote_profiles");
+    const profiles = await pg.query<{ data_source_id: string; name: string }>("select data_source_id, profile->>'companyName' as name from eqg_quote_profiles");
     assert.deepEqual(profiles.rows, [{ data_source_id: "persisted", name: "P Inc" }]);
   });
 

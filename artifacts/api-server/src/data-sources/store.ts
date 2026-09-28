@@ -38,6 +38,13 @@ export interface DataSourceStore {
    */
   getProfile(id: string): Promise<QuoteProfile | null>;
   setProfile(id: string, profile: QuoteProfile | null): Promise<void>;
+  /** What the store did to adopt data left by an earlier layout, if anything (shown under Storage details). */
+  migration?(): Promise<MigrationReport | null>;
+}
+
+export interface MigrationReport {
+  at: string;
+  notes: string[];
 }
 
 export const DEFAULT_SOURCE_KEY = "default_data_source_id";

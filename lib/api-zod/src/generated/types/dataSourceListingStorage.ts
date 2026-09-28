@@ -15,4 +15,6 @@ export type DataSourceListingStorage = {
   lookedFor: string[];
   error: string | null;
   malformedSources: string[];
+  /** What the store did on first use to adopt data left by an earlier table layout; empty when nothing. */
+  migration: string;
 };
