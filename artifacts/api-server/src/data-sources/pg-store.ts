@@ -23,6 +23,16 @@ interface Row {
 
 const iso = (v: string | Date) => new Date(v).toISOString();
 
+/** A failure of the socket/session, as opposed to a bad statement. */
+export function isConnectionError(err: unknown): boolean {
+  if (!(err instanceof Error)) return false;
+  const code = (err as { code?: string }).code ?? "";
+  return (
+    /^(ECONNRESET|EPIPE|ETIMEDOUT|ECONNREFUSED|EAI_AGAIN|ENOTFOUND|57P01|57P02|57P03|08006|08003|08001|08004)$/.test(code) ||
+    /Connection terminated|terminating connection|connection closed|Client has encountered a connection error|timeout exceeded when trying to connect|Connection ended unexpectedly|server closed the connection/i.test(err.message)
+  );
+}
+
 /** jsonb values come back parsed by pg/PGlite; tolerate a string just in case. */
 function json<T>(v: unknown): T {
   return (typeof v === "string" ? JSON.parse(v) : v) as T;
@@ -41,10 +51,28 @@ export class PgDataSourceStore implements DataSourceStore {
 
   constructor(private readonly client: SqlClient) {}
 
+  /**
+   * Runs one statement, retrying once when the *connection* failed rather
+   * than the statement. On serverless hosting a function instance is frozen
+   * between requests; hosted Postgres (Neon) closes the idle pooled socket in
+   * the meantime, and the first query after thawing fails with "Connection
+   * terminated unexpectedly" / ECONNRESET. The retry gets a fresh connection.
+   */
+  private async q(text: string, params?: unknown[]): Promise<{ rows: any[] }> {
+    try {
+      return await this.client.query(text, params);
+    } catch (err) {
+      if (!isConnectionError(err)) throw err;
+      console.warn(`[data-sources] Postgres connection dropped (${(err as Error).message}); retrying once.`);
+      await new Promise((r) => setTimeout(r, 250));
+      return await this.client.query(text, params);
+    }
+  }
+
   private ensureSchema(): Promise<void> {
     if (!this.ready) {
       this.ready = (async () => {
-        await this.client.query(`CREATE TABLE IF NOT EXISTS data_sources (
+        await this.q(`CREATE TABLE IF NOT EXISTS data_sources (
           id text PRIMARY KEY,
           name text NOT NULL,
           manifest jsonb NOT NULL,
@@ -53,11 +81,11 @@ export class PgDataSourceStore implements DataSourceStore {
           created_at timestamptz NOT NULL DEFAULT now(),
           updated_at timestamptz NOT NULL DEFAULT now()
         )`);
-        await this.client.query(`CREATE TABLE IF NOT EXISTS app_settings (
+        await this.q(`CREATE TABLE IF NOT EXISTS app_settings (
           key text PRIMARY KEY,
           value text NOT NULL
         )`);
-        await this.client.query(`CREATE TABLE IF NOT EXISTS quote_profiles (
+        await this.q(`CREATE TABLE IF NOT EXISTS quote_profiles (
           data_source_id text PRIMARY KEY,
           profile jsonb NOT NULL,
           updated_at timestamptz NOT NULL DEFAULT now()
@@ -72,13 +100,13 @@ export class PgDataSourceStore implements DataSourceStore {
 
   async list(): Promise<StoredDataSourceHeader[]> {
     await this.ensureSchema();
-    const { rows } = await this.client.query(`SELECT id, name, manifest, updated_at FROM data_sources ORDER BY name`);
+    const { rows } = await this.q(`SELECT id, name, manifest, updated_at FROM data_sources ORDER BY name`);
     return (rows as Row[]).map((r) => ({ id: r.id, name: r.name, manifest: json<DataSourceManifest>(r.manifest), updatedAt: iso(r.updated_at) }));
   }
 
   async get(id: string): Promise<StoredDataSource | null> {
     await this.ensureSchema();
-    const { rows } = await this.client.query(`SELECT id, name, manifest, assets, products, updated_at FROM data_sources WHERE id = $1`, [id]);
+    const { rows } = await this.q(`SELECT id, name, manifest, assets, products, updated_at FROM data_sources WHERE id = $1`, [id]);
     const r = rows[0] as Row | undefined;
     if (!r) return null;
     return {
@@ -93,7 +121,7 @@ export class PgDataSourceStore implements DataSourceStore {
 
   async getVersion(id: string): Promise<string | null> {
     await this.ensureSchema();
-    const { rows } = await this.client.query(`SELECT updated_at FROM data_sources WHERE id = $1`, [id]);
+    const { rows } = await this.q(`SELECT updated_at FROM data_sources WHERE id = $1`, [id]);
     const r = rows[0] as Pick<Row, "updated_at"> | undefined;
     return r ? iso(r.updated_at) : null;
   }
@@ -101,7 +129,7 @@ export class PgDataSourceStore implements DataSourceStore {
   async put(record: Omit<StoredDataSource, "updatedAt">): Promise<StoredDataSource> {
     await this.ensureSchema();
     const now = new Date();
-    await this.client.query(
+    await this.q(
       `INSERT INTO data_sources (id, name, manifest, assets, products, created_at, updated_at)
        VALUES ($1, $2, $3::jsonb, $4::jsonb, $5::jsonb, $6, $6)
        ON CONFLICT (id) DO UPDATE SET
@@ -114,15 +142,15 @@ export class PgDataSourceStore implements DataSourceStore {
 
   async delete(id: string): Promise<boolean> {
     await this.ensureSchema();
-    const { rows } = await this.client.query(`DELETE FROM data_sources WHERE id = $1 RETURNING id`, [id]);
-    await this.client.query(`DELETE FROM quote_profiles WHERE data_source_id = $1`, [id]);
+    const { rows } = await this.q(`DELETE FROM data_sources WHERE id = $1 RETURNING id`, [id]);
+    await this.q(`DELETE FROM quote_profiles WHERE data_source_id = $1`, [id]);
     if (rows.length && (await this.getSetting(DEFAULT_SOURCE_KEY)) === id) await this.setSetting(DEFAULT_SOURCE_KEY, null);
     return rows.length > 0;
   }
 
   async getProfile(id: string): Promise<QuoteProfile | null> {
     await this.ensureSchema();
-    const { rows } = await this.client.query(`SELECT profile FROM quote_profiles WHERE data_source_id = $1`, [id]);
+    const { rows } = await this.q(`SELECT profile FROM quote_profiles WHERE data_source_id = $1`, [id]);
     const r = rows[0] as { profile: unknown } | undefined;
     return r ? json<QuoteProfile>(r.profile) : null;
   }
@@ -130,10 +158,10 @@ export class PgDataSourceStore implements DataSourceStore {
   async setProfile(id: string, profile: QuoteProfile | null): Promise<void> {
     await this.ensureSchema();
     if (profile === null) {
-      await this.client.query(`DELETE FROM quote_profiles WHERE data_source_id = $1`, [id]);
+      await this.q(`DELETE FROM quote_profiles WHERE data_source_id = $1`, [id]);
       return;
     }
-    await this.client.query(
+    await this.q(
       `INSERT INTO quote_profiles (data_source_id, profile, updated_at) VALUES ($1, $2::jsonb, now())
        ON CONFLICT (data_source_id) DO UPDATE SET profile = EXCLUDED.profile, updated_at = now()`,
       [id, JSON.stringify(profile)],
@@ -142,17 +170,17 @@ export class PgDataSourceStore implements DataSourceStore {
 
   async getSetting(key: string): Promise<string | null> {
     await this.ensureSchema();
-    const { rows } = await this.client.query(`SELECT value FROM app_settings WHERE key = $1`, [key]);
+    const { rows } = await this.q(`SELECT value FROM app_settings WHERE key = $1`, [key]);
     return (rows[0] as { value: string } | undefined)?.value ?? null;
   }
 
   async setSetting(key: string, value: string | null): Promise<void> {
     await this.ensureSchema();
     if (value === null) {
-      await this.client.query(`DELETE FROM app_settings WHERE key = $1`, [key]);
+      await this.q(`DELETE FROM app_settings WHERE key = $1`, [key]);
       return;
     }
-    await this.client.query(
+    await this.q(
       `INSERT INTO app_settings (key, value) VALUES ($1, $2) ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value`,
       [key, value],
     );

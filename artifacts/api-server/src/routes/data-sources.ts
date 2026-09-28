@@ -34,7 +34,8 @@ function handle(err: unknown, res: Response, what: string) {
     return;
   }
   console.error(`Error ${what}:`, err);
-  res.status(500).json({ error: `Failed ${what}` });
+  const detail = err instanceof Error && err.message ? `: ${err.message}` : "";
+  res.status(500).json({ error: `Failed ${what}${detail}`, storage: getStorageDiagnostics() });
 }
 
 function workbookUpload(req: Request, res: Response, next: NextFunction) {

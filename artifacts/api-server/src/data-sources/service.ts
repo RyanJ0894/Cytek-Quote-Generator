@@ -376,7 +376,12 @@ function createStoreFromEnv(): DataSourceStore {
   };
   if (db) {
     console.info(`[data-sources] Using Postgres from ${db.name} (persistent).`);
-    return new PgDataSourceStore(new pg.Pool(pgPoolConfig(db.url)));
+    const pool = new pg.Pool(pgPoolConfig(db.url));
+    // An idle pooled connection dropped by the server (routine on serverless +
+    // hosted Postgres) emits "error" on the pool; without a listener Node
+    // treats it as an unhandled event and the whole function dies.
+    pool.on("error", (err) => console.warn(`[data-sources] Idle Postgres connection closed: ${err.message}`));
+    return new PgDataSourceStore(pool);
   }
   const dir = process.env["DATA_SOURCES_DIR"];
   if (dir) return new FileDataSourceStore(dir);

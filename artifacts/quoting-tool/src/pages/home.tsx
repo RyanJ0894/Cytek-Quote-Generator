@@ -40,8 +40,10 @@ export default function Home() {
         )}
 
         {error && (
-          <div className="bg-destructive/5 border border-destructive/30 text-destructive rounded-2xl p-6 text-sm">
-            Could not load data sources. Refresh the page or check the server.
+          <div className="bg-destructive/5 border border-destructive/30 text-destructive rounded-2xl p-6 text-sm" data-testid="home-error">
+            <p className="font-semibold">Could not load data sources.</p>
+            <p className="mt-1 opacity-90">{(error as { data?: { error?: string }; message?: string }).data?.error || (error as { message?: string }).message || "Refresh the page or check the server."}</p>
+            <p className="mt-2 text-xs text-muted-foreground">If this persists, open <Link href="/data-sources" className="underline">Data Sources</Link> for storage details.</p>
           </div>
         )}
 
