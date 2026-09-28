@@ -9,6 +9,7 @@
 export * from "./assetData";
 export * from "./assetLookupResult";
 export * from "./dataSourceListing";
+export * from "./dataSourceListingSeedsItem";
 export * from "./dataSourceListingStorage";
 export * from "./dataSourceParamParameter";
 export * from "./dataSourceSummary";

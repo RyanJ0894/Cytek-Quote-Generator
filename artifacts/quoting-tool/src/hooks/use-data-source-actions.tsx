@@ -96,6 +96,15 @@ export function useDataSourceActions(opts: { onDeleted?: (ds: DataSourceSummary)
     [run],
   );
 
+  /** Puts a built-in source back exactly as shipped after it was deleted. */
+  const restoreSeed = useCallback(
+    (id: string, name: string) =>
+      run(`restore-${id}`, async () => {
+        await api(`/data-sources/${encodeURIComponent(id)}/restore`, { method: "POST" });
+      }, `"${name}" restored`),
+    [run],
+  );
+
   const deleting = pendingDelete ? busy === `delete-${pendingDelete.id}` : false;
   const elements = (
     <>
@@ -120,5 +129,5 @@ export function useDataSourceActions(opts: { onDeleted?: (ds: DataSourceSummary)
     </>
   );
 
-  return { busy, confirmDelete, replaceWorkbook, setDefault, rename, refresh, elements };
+  return { busy, confirmDelete, replaceWorkbook, setDefault, rename, restoreSeed, refresh, elements };
 }

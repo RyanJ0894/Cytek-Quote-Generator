@@ -137,6 +137,14 @@ export type DataSourceListingStorage = {
   malformedSources: string[];
 };
 
+export type DataSourceListingSeedsItem = {
+  id: string;
+  name: string;
+  present: boolean;
+  seededAt: string | null;
+  deletedAt: string | null;
+};
+
 export interface DataSourceListing {
   dataSources: DataSourceSummary[];
   /** null when no data source exists yet. */
@@ -147,6 +155,10 @@ export interface DataSourceListing {
   storeKind: string;
   /** Names (never values) of the environment variables the server considered for its database, and any connection error. */
   storage: DataSourceListingStorage;
+  /** Built-in sources and whether each is present in this store. */
+  seeds: DataSourceListingSeedsItem[];
+  /** The raw default-source setting (null when unset). */
+  defaultSetting: string | null;
 }
 
 export interface AssetLookupResult {

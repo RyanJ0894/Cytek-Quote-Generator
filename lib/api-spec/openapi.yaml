@@ -176,6 +176,25 @@ paths:
                     type: string
                 required: [defaultId]
 
+  /data-sources/{id}/restore:
+    post:
+      operationId: restoreDataSource
+      tags: [data-sources]
+      summary: Put a built-in data source back after it was deleted (shipped data + Quote Profile)
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "201":
+          description: Restored
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DataSourceSummary"
+
   /data-sources/{id}:
     patch:
       operationId: renameDataSource
@@ -585,12 +604,37 @@ components:
               items:
                 type: string
           required: [selectedVar, candidateVars, lookedFor, error, malformedSources]
+        seeds:
+          type: array
+          description: Built-in sources and whether each is present in this store.
+          items:
+            type: object
+            properties:
+              id:
+                type: string
+              name:
+                type: string
+              present:
+                type: boolean
+              seededAt:
+                type: string
+                nullable: true
+              deletedAt:
+                type: string
+                nullable: true
+            required: [id, name, present, seededAt, deletedAt]
+        defaultSetting:
+          type: string
+          nullable: true
+          description: The raw default-source setting (null when unset).
       required:
         - dataSources
         - defaultId
         - persistent
         - storeKind
         - storage
+        - seeds
+        - defaultSetting
 
     AssetLookupResult:
       type: object

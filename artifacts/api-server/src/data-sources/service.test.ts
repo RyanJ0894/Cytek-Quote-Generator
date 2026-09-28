@@ -192,7 +192,7 @@ describe("DataSourceService", () => {
     const rows = await pg.query<{ id: string; n: number }>("select id, jsonb_array_length(assets) as n from data_sources");
     assert.deepEqual(rows.rows, [{ id: "persisted", n: 3585 }]);
     const settings = await pg.query<{ key: string }>("select key from app_settings order by key");
-    assert.deepEqual(settings.rows.map((r) => r.key), ["default_data_source_id", "seeded:cytek"]);
+    assert.deepEqual(settings.rows.map((r) => r.key), ["default_data_source_id", "deleted:company-b", "deleted:company-b-2", "deleted:cytek", "seeded:cytek"], "deletions are recorded as audit markers");
     await b.setProfile("persisted", { companyName: "P Inc" });
     const profiles = await pg.query<{ data_source_id: string; name: string }>("select data_source_id, profile->>'companyName' as name from quote_profiles");
     assert.deepEqual(profiles.rows, [{ data_source_id: "persisted", name: "P Inc" }]);
