@@ -57,10 +57,15 @@ export default function Home() {
                 {seed.deletedAt
                   ? `It was deleted through the app on ${new Date(seed.deletedAt).toLocaleString()}.`
                   : seed.seededAt
-                    ? "No deletion was recorded by the app, so it was removed at the database level."
+                    ? "The app has no record of deleting it: it was either deleted before the app began recording deletions, or removed at the database level."
                     : "It has never been added to this database."}
                 {" "}Restore puts it back exactly as shipped: data, Quote Profile, logo and Terms &amp; Conditions.
               </p>
+              {actions.lastError?.key === `restore-${seed.id}` && (
+                <p className="mt-2 font-medium text-destructive" role="alert" data-testid={`home-restore-error-${seed.id}`}>
+                  Restore failed: {actions.lastError.message}
+                </p>
+              )}
             </div>
             <button type="button" onClick={() => actions.restoreSeed(seed.id, seed.name)} disabled={actions.busy !== null}
               className="inline-flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl text-sm font-bold bg-gradient-to-r from-primary to-primary-glow text-primary-foreground shadow-lg shadow-primary/25 hover:shadow-xl transition-all disabled:opacity-70 whitespace-nowrap" data-testid={`home-restore-${seed.id}`}>

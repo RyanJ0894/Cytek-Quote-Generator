@@ -35,6 +35,8 @@ function handle(err: unknown, res: Response, what: string) {
   }
   console.error(`Error ${what}:`, err);
   const detail = err instanceof Error && err.message ? `: ${err.message}` : "";
+  // Recorded so the Data Sources page's "Storage details" can show what last went wrong on this instance.
+  reportStorageError(new Error(`${what}${detail}`));
   res.status(500).json({ error: `Failed ${what}${detail}`, storage: getStorageDiagnostics() });
 }
 
