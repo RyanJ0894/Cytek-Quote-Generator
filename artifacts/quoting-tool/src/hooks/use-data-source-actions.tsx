@@ -16,6 +16,8 @@ export function useDataSourceActions(opts: { onDeleted?: (ds: DataSourceSummary)
   const queryClient = useQueryClient();
   const { toast } = useToast();
   const [busy, setBusy] = useState<string | null>(null);
+  /** The most recent failure, keyed like `busy` (e.g. "restore-cytek"), so a page can show it next to the control that failed. */
+  const [lastError, setLastError] = useState<{ key: string; message: string } | null>(null);
   const [pendingDelete, setPendingDelete] = useState<DataSourceSummary | null>(null);
   const replaceInput = useRef<HTMLInputElement>(null);
   const replaceTarget = useRef<DataSourceSummary | null>(null);
@@ -25,15 +27,19 @@ export function useDataSourceActions(opts: { onDeleted?: (ds: DataSourceSummary)
   const run = useCallback(
     async (key: string, fn: () => Promise<void>, success: string): Promise<boolean> => {
       setBusy(key);
+      setLastError(null);
       try {
         await fn();
-        await refresh();
         toast({ title: success });
         return true;
       } catch (err: unknown) {
-        toast({ variant: "destructive", title: "Something went wrong", description: err instanceof Error ? err.message : String(err) });
+        const message = err instanceof Error ? err.message : String(err);
+        setLastError({ key, message });
+        toast({ variant: "destructive", title: "Something went wrong", description: message });
         return false;
       } finally {
+        // Refresh after failures too: the server may have changed state before it answered with an error.
+        await refresh().catch(() => undefined);
         setBusy(null);
       }
     },
@@ -129,5 +135,5 @@ export function useDataSourceActions(opts: { onDeleted?: (ds: DataSourceSummary)
     </>
   );
 
-  return { busy, confirmDelete, replaceWorkbook, setDefault, rename, restoreSeed, refresh, elements };
+  return { busy, lastError, confirmDelete, replaceWorkbook, setDefault, rename, restoreSeed, refresh, elements };
 }

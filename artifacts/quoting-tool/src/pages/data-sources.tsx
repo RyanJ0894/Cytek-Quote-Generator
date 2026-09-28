@@ -120,10 +120,15 @@ export default function DataSourcesPage() {
                 {seed.deletedAt
                   ? `It was deleted through the app on ${new Date(seed.deletedAt).toLocaleString()}.`
                   : seed.seededAt
-                    ? `It was added on ${new Date(seed.seededAt).toLocaleString()} and no deletion was recorded by the app, so it was removed at the database level.`
+                    ? `It was added on ${new Date(seed.seededAt).toLocaleString()}. The app has no record of deleting it: it was either deleted before the app began recording deletions, or removed at the database level.`
                     : "It has never been added to this database."}
                 {" "}Restoring puts it back exactly as shipped: its data, Quote Profile, logo and Terms &amp; Conditions.
               </p>
+              {actions.lastError?.key === `restore-${seed.id}` && (
+                <p className="mt-2 font-medium text-destructive" role="alert" data-testid={`restore-error-${seed.id}`}>
+                  Restore failed: {actions.lastError.message}
+                </p>
+              )}
             </div>
             <button type="button" onClick={() => actions.restoreSeed(seed.id, seed.name)} disabled={busy}
               className="inline-flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl text-sm font-bold bg-gradient-to-r from-primary to-primary-glow text-primary-foreground shadow-lg shadow-primary/25 hover:shadow-xl transition-all disabled:opacity-70 whitespace-nowrap" data-testid={`restore-${seed.id}`}>
@@ -273,7 +278,7 @@ export default function DataSourcesPage() {
                   <dd>{seed.present ? "present" : "missing"}{seed.seededAt ? ` · added ${new Date(seed.seededAt).toLocaleString()}` : " · never added"}{seed.deletedAt ? ` · deleted through the app ${new Date(seed.deletedAt).toLocaleString()}` : ""}</dd>
                 </React.Fragment>
               ))}
-              {data.storage.error && <><dt className="font-semibold text-destructive">Last database error</dt><dd className="text-destructive">{data.storage.error}</dd></>}
+              {data.storage.error && <><dt className="font-semibold text-destructive">Last error on this server instance</dt><dd className="text-destructive">{data.storage.error}</dd></>}
             </dl>
           </details>
         )}
