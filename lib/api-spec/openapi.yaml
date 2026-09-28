@@ -603,7 +603,10 @@ components:
               type: array
               items:
                 type: string
-          required: [selectedVar, candidateVars, lookedFor, error, malformedSources]
+            migration:
+              type: string
+              description: What the store did on first use to adopt data left by an earlier table layout; empty when nothing.
+          required: [selectedVar, candidateVars, lookedFor, error, malformedSources, migration]
         seeds:
           type: array
           description: Built-in sources and whether each is present in this store.

@@ -183,10 +183,19 @@ export class DataSourceService {
       defaultId,
       persistent: this.store.persistent,
       storeKind: this.store.kind,
-      storage: getStorageDiagnostics(),
+      storage: { ...getStorageDiagnostics(), migration: await this.migrationNote() },
       seeds,
       defaultSetting: await this.store.getSetting(DEFAULT_SOURCE_KEY),
     };
+  }
+
+  private async migrationNote(): Promise<string> {
+    try {
+      const report = await this.store.migration?.();
+      return report ? `On ${new Date(report.at).toLocaleString("en-US", { timeZone: "UTC" })} UTC the app adopted the data left in its previous tables: ${report.notes.join("; ")}.` : "";
+    } catch (err) {
+      return `Could not read the migration record: ${err instanceof Error ? err.message : String(err)}`;
+    }
   }
 
   /**
@@ -401,8 +410,10 @@ export interface StorageDiagnostics {
   error: string | null;
   /** Ids of stored sources whose manifest could not be read as saved (repaired for display). */
   malformedSources: string[];
+  /** What the store did on first use to adopt data left by an earlier table layout ("" when nothing). */
+  migration: string;
 }
-let storageDiagnostics: StorageDiagnostics = { selectedVar: null, candidateVars: [], lookedFor: DATABASE_URL_VARS, error: null, malformedSources: [] };
+let storageDiagnostics: StorageDiagnostics = { selectedVar: null, candidateVars: [], lookedFor: DATABASE_URL_VARS, error: null, malformedSources: [], migration: "" };
 
 const EMPTY_COUNTS: DataSourceManifest["counts"] = {
   assets: 0, products: 0, pricedProducts: 0, unpricedProducts: 0, services: 0,
@@ -494,6 +505,7 @@ function createStoreFromEnv(): DataSourceStore {
     lookedFor: DATABASE_URL_VARS,
     error: null,
     malformedSources: [],
+    migration: "",
   };
   if (db) {
     console.info(`[data-sources] Using Postgres from ${db.name} (persistent).`);

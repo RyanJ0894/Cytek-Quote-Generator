@@ -6,7 +6,7 @@ import { jsonb, pgTable, text, timestamp } from "drizzle-orm/pg-core";
  * indexed there (a few MB per source), so relational tables would add
  * migrations and joins without buying anything for this app's lookups.
  */
-export const dataSourcesTable = pgTable("data_sources", {
+export const dataSourcesTable = pgTable("eqg_data_sources", {
   id: text("id").primaryKey(),
   name: text("name").notNull(),
   manifest: jsonb("manifest").notNull(),
@@ -17,9 +17,16 @@ export const dataSourcesTable = pgTable("data_sources", {
 });
 
 /** Small key/value table for app-level settings (e.g. the default data source id). */
-export const appSettingsTable = pgTable("app_settings", {
+export const appSettingsTable = pgTable("eqg_app_settings", {
   key: text("key").primaryKey(),
   value: text("value").notNull(),
 });
 
 export type DataSourceRow = typeof dataSourcesTable.$inferSelect;
+
+/** The Quote Profile (seller identity, branding, terms) per Data Source, kept apart from its data. */
+export const quoteProfilesTable = pgTable("eqg_quote_profiles", {
+  dataSourceId: text("data_source_id").primaryKey(),
+  profile: jsonb("profile").notNull(),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+});

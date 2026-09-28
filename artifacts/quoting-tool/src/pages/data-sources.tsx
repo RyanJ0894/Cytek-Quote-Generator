@@ -278,6 +278,7 @@ export default function DataSourcesPage() {
                   <dd>{seed.present ? "present" : "missing"}{seed.seededAt ? ` · added ${new Date(seed.seededAt).toLocaleString()}` : " · never added"}{seed.deletedAt ? ` · deleted through the app ${new Date(seed.deletedAt).toLocaleString()}` : ""}</dd>
                 </React.Fragment>
               ))}
+              {data.storage.migration && <><dt className="font-semibold text-secondary-foreground">Table migration</dt><dd data-testid="storage-migration">{data.storage.migration}</dd></>}
               {data.storage.error && <><dt className="font-semibold text-destructive">Last error on this server instance</dt><dd className="text-destructive">{data.storage.error}</dd></>}
             </dl>
           </details>
