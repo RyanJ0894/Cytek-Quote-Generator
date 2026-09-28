@@ -47,6 +47,28 @@ export default function Home() {
           </div>
         )}
 
+        {/* A built-in source that is no longer in the database: say so here, on the page where it is missed, and offer Restore. */}
+        {data?.seeds.filter((seed) => !seed.present).map((seed) => (
+          <div key={seed.id} className="max-w-2xl mx-auto mb-6 flex flex-col sm:flex-row sm:items-center gap-3 bg-warning/10 border border-warning/30 rounded-xl p-4 text-sm" data-testid={`home-seed-missing-${seed.id}`}>
+            <AlertTriangle className="w-5 h-5 flex-shrink-0 text-warning-foreground" />
+            <div className="flex-1">
+              <p className="font-semibold text-foreground">"{seed.name}" is not in this database.</p>
+              <p className="text-muted-foreground">
+                {seed.deletedAt
+                  ? `It was deleted through the app on ${new Date(seed.deletedAt).toLocaleString()}.`
+                  : seed.seededAt
+                    ? "No deletion was recorded by the app, so it was removed at the database level."
+                    : "It has never been added to this database."}
+                {" "}Restore puts it back exactly as shipped: data, Quote Profile, logo and Terms &amp; Conditions.
+              </p>
+            </div>
+            <button type="button" onClick={() => actions.restoreSeed(seed.id, seed.name)} disabled={actions.busy !== null}
+              className="inline-flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl text-sm font-bold bg-gradient-to-r from-primary to-primary-glow text-primary-foreground shadow-lg shadow-primary/25 hover:shadow-xl transition-all disabled:opacity-70 whitespace-nowrap" data-testid={`home-restore-${seed.id}`}>
+              {actions.busy === `restore-${seed.id}` ? <><Loader2 className="w-4 h-4 animate-spin" /> Restoring…</> : `Restore ${seed.name}`}
+            </button>
+          </div>
+        ))}
+
         {data && sources.length === 0 && (
           <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} className="max-w-xl mx-auto text-center">
             <div className="bg-card rounded-2xl border border-border shadow-card p-10">
