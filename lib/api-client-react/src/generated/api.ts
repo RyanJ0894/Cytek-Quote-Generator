@@ -645,6 +645,90 @@ export const useSetDefaultDataSource = <
 };
 
 /**
+ * @summary Put a built-in data source back after it was deleted (shipped data + Quote Profile)
+ */
+export const getRestoreDataSourceUrl = (id: string) => {
+  return `/api/data-sources/${id}/restore`;
+};
+
+export const restoreDataSource = async (
+  id: string,
+  options?: RequestInit,
+): Promise<DataSourceSummary> => {
+  return customFetch<DataSourceSummary>(getRestoreDataSourceUrl(id), {
+    ...options,
+    method: "POST",
+  });
+};
+
+export const getRestoreDataSourceMutationOptions = <
+  TError = ErrorType<unknown>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof restoreDataSource>>,
+    TError,
+    { id: string },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationOptions<
+  Awaited<ReturnType<typeof restoreDataSource>>,
+  TError,
+  { id: string },
+  TContext
+> => {
+  const mutationKey = ["restoreDataSource"];
+  const { mutation: mutationOptions, request: requestOptions } = options
+    ? options.mutation &&
+      "mutationKey" in options.mutation &&
+      options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey }, request: undefined };
+
+  const mutationFn: MutationFunction<
+    Awaited<ReturnType<typeof restoreDataSource>>,
+    { id: string }
+  > = (props) => {
+    const { id } = props ?? {};
+
+    return restoreDataSource(id, requestOptions);
+  };
+
+  return { mutationFn, ...mutationOptions };
+};
+
+export type RestoreDataSourceMutationResult = NonNullable<
+  Awaited<ReturnType<typeof restoreDataSource>>
+>;
+
+export type RestoreDataSourceMutationError = ErrorType<unknown>;
+
+/**
+ * @summary Put a built-in data source back after it was deleted (shipped data + Quote Profile)
+ */
+export const useRestoreDataSource = <
+  TError = ErrorType<unknown>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof restoreDataSource>>,
+    TError,
+    { id: string },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationResult<
+  Awaited<ReturnType<typeof restoreDataSource>>,
+  TError,
+  { id: string },
+  TContext
+> => {
+  return useMutation(getRestoreDataSourceMutationOptions(options));
+};
+
+/**
  * @summary Edit a data source's management fields (name)
  */
 export const getRenameDataSourceUrl = (id: string) => {

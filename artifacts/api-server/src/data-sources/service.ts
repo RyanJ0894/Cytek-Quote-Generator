@@ -50,6 +50,10 @@ export interface DataSourceListing {
   storeKind: DataSourceStore["kind"];
   /** Names (never values) of the environment variables the server considered for its database, and any connection error. */
   storage: StorageDiagnostics;
+  /** Built-in sources and whether each is present, so a missing one can be restored. */
+  seeds: SeedStatus[];
+  /** The raw default-source setting (null when unset), for diagnosing an unexpected default. */
+  defaultSetting: string | null;
 }
 
 export function slugify(name: string): string {
@@ -62,6 +66,18 @@ export function slugify(name: string): string {
 }
 
 const seededKey = (id: string) => `seeded:${id}`;
+const deletedKey = (id: string) => `deleted:${id}`;
+
+/** Status of a built-in (seeded) source, so a missing one can be explained and restored. */
+export interface SeedStatus {
+  id: string;
+  name: string;
+  present: boolean;
+  /** When the app seeded it into this store (null if never). */
+  seededAt: string | null;
+  /** When it was deleted through the app (null if never, or if it vanished some other way). */
+  deletedAt: string | null;
+}
 
 export class DataSourceService {
   private readonly cache = new Map<string, { version: string; ds: DataSource }>();
@@ -152,7 +168,44 @@ export class DataSourceService {
         return null;
       })))))
     ).sort((a, b) => Number(b.isDefault) - Number(a.isDefault) || a.name.localeCompare(b.name));
-    return { dataSources, defaultId, persistent: this.store.persistent, storeKind: this.store.kind, storage: getStorageDiagnostics() };
+    const present = new Set(all.map((h) => h.id));
+    const seeds: SeedStatus[] = await Promise.all(
+      this.seeds.map(async (seed) => ({
+        id: seed.id,
+        name: seed.name,
+        present: present.has(seed.id),
+        seededAt: await this.store.getSetting(seededKey(seed.id)),
+        deletedAt: await this.store.getSetting(deletedKey(seed.id)),
+      })),
+    );
+    return {
+      dataSources,
+      defaultId,
+      persistent: this.store.persistent,
+      storeKind: this.store.kind,
+      storage: getStorageDiagnostics(),
+      seeds,
+      defaultSetting: await this.store.getSetting(DEFAULT_SOURCE_KEY),
+    };
+  }
+
+  /**
+   * Puts a built-in source back exactly as shipped (data + Quote Profile)
+   * after it was deleted. Only seeds can be restored, and only when absent.
+   */
+  async restoreSeed(id: string): Promise<DataSourceSummary> {
+    await this.ensureSeeded();
+    const seed = this.seeds.find((s) => s.id === id);
+    if (!seed) throw new DataSourceError(404, `"${id}" is not a built-in data source.`);
+    if ((await this.store.getVersion(id)) !== null) throw new DataSourceError(409, `"${seed.name}" is already present.`);
+    const { quoteProfile, ...record } = seed;
+    await this.store.put(record);
+    if (quoteProfile) await this.store.setProfile(id, quoteProfile);
+    await this.adoptAsDefaultIfNone(id);
+    await this.store.setSetting(deletedKey(id), null);
+    console.info(`[data-sources] Restored built-in source "${id}".`);
+    this.cache.delete(id);
+    return this.summary(id);
   }
 
   /**
@@ -285,6 +338,9 @@ export class DataSourceService {
     await this.ensureSeeded();
     const existed = await this.store.delete(id);
     if (!existed) throw new DataSourceError(404, `Unknown data source: ${id}`);
+    // Audit trail: a source that disappears without this marker was not deleted through the app.
+    await this.store.setSetting(deletedKey(id), new Date().toISOString());
+    console.info(`[data-sources] Deleted source "${id}" (recorded).`);
     this.cache.delete(id);
   }
 

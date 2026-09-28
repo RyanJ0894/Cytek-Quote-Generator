@@ -111,6 +111,27 @@ export default function DataSourcesPage() {
           </div>
         )}
 
+        {data?.seeds.filter((s) => !s.present).map((seed) => (
+          <div key={seed.id} className="flex flex-col sm:flex-row sm:items-center gap-3 bg-warning/10 border border-warning/30 rounded-xl p-4 text-sm" data-testid={`seed-missing-${seed.id}`}>
+            <AlertTriangle className="w-5 h-5 flex-shrink-0 text-warning-foreground" />
+            <div className="flex-1">
+              <p className="font-semibold text-foreground">The built-in source "{seed.name}" is not in this database.</p>
+              <p className="text-muted-foreground">
+                {seed.deletedAt
+                  ? `It was deleted through the app on ${new Date(seed.deletedAt).toLocaleString()}.`
+                  : seed.seededAt
+                    ? `It was added on ${new Date(seed.seededAt).toLocaleString()} and no deletion was recorded by the app, so it was removed at the database level.`
+                    : "It has never been added to this database."}
+                {" "}Restoring puts it back exactly as shipped: its data, Quote Profile, logo and Terms &amp; Conditions.
+              </p>
+            </div>
+            <button type="button" onClick={() => actions.restoreSeed(seed.id, seed.name)} disabled={busy}
+              className="inline-flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl text-sm font-bold bg-gradient-to-r from-primary to-primary-glow text-primary-foreground shadow-lg shadow-primary/25 hover:shadow-xl transition-all disabled:opacity-70 whitespace-nowrap" data-testid={`restore-${seed.id}`}>
+              {actions.busy === `restore-${seed.id}` ? <><Loader2 className="w-4 h-4 animate-spin" /> Restoring…</> : `Restore ${seed.name}`}
+            </button>
+          </div>
+        ))}
+
         <section className="bg-card rounded-2xl border border-border shadow-card overflow-hidden">
           <div className="px-6 py-4 border-b border-border/60 flex items-center gap-3">
             <div className="w-9 h-9 rounded-xl bg-primary/10 flex items-center justify-center text-primary"><Database className="w-5 h-5" /></div>
@@ -238,6 +259,24 @@ export default function DataSourcesPage() {
             {formError && <p className="sm:col-span-5 text-sm text-destructive">{formError}</p>}
           </form>
         </section>
+
+        {data && (
+          <details className="text-xs text-muted-foreground" data-testid="storage-details">
+            <summary className="cursor-pointer select-none hover:text-foreground">Storage details</summary>
+            <dl className="mt-2 grid grid-cols-1 sm:grid-cols-2 gap-x-6 gap-y-1 rounded-xl border border-border/60 bg-card/60 p-4">
+              <dt className="font-semibold text-secondary-foreground">Backend</dt><dd>{data.storeKind}{data.storage.selectedVar ? ` (from ${data.storage.selectedVar})` : ""}{data.persistent ? "" : " — not persistent"}</dd>
+              <dt className="font-semibold text-secondary-foreground">Sources stored</dt><dd>{data.dataSources.length}{data.storage.malformedSources.length ? ` (${data.storage.malformedSources.length} with a damaged record: ${data.storage.malformedSources.join(", ")})` : ""}</dd>
+              <dt className="font-semibold text-secondary-foreground">Default setting</dt><dd>{data.defaultSetting ?? "not set (first source by name is used)"}{data.defaultSetting && !data.dataSources.some((d) => d.id === data.defaultSetting) ? " — refers to a source that no longer exists" : ""}</dd>
+              {data.seeds.map((seed) => (
+                <React.Fragment key={seed.id}>
+                  <dt className="font-semibold text-secondary-foreground">Built-in: {seed.name}</dt>
+                  <dd>{seed.present ? "present" : "missing"}{seed.seededAt ? ` · added ${new Date(seed.seededAt).toLocaleString()}` : " · never added"}{seed.deletedAt ? ` · deleted through the app ${new Date(seed.deletedAt).toLocaleString()}` : ""}</dd>
+                </React.Fragment>
+              ))}
+              {data.storage.error && <><dt className="font-semibold text-destructive">Last database error</dt><dd className="text-destructive">{data.storage.error}</dd></>}
+            </dl>
+          </details>
+        )}
       </main>
       {actions.elements}
     </PageShell>

@@ -161,6 +161,15 @@ router.patch("/:id", async (req, res) => {
   }
 });
 
+/** Put a built-in source (e.g. Cytek — Current) back after it was deleted, with its shipped data and Quote Profile. */
+router.post("/:id/restore", async (req, res) => {
+  try {
+    res.status(201).json(await getDataSourceService().restoreSeed(paramId(req)));
+  } catch (err) {
+    handle(err, res, "restoring the built-in data source");
+  }
+});
+
 router.delete("/:id", async (req, res) => {
   try {
     await getDataSourceService().delete(paramId(req));

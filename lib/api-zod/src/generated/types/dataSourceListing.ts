@@ -5,6 +5,7 @@
  * Cytek Quoting Tool API
  * OpenAPI spec version: 0.1.0
  */
+import type { DataSourceListingSeedsItem } from "./dataSourceListingSeedsItem";
 import type { DataSourceListingStorage } from "./dataSourceListingStorage";
 import type { DataSourceSummary } from "./dataSourceSummary";
 
@@ -18,4 +19,8 @@ export interface DataSourceListing {
   storeKind: string;
   /** Names (never values) of the environment variables the server considered for its database, and any connection error. */
   storage: DataSourceListingStorage;
+  /** Built-in sources and whether each is present in this store. */
+  seeds: DataSourceListingSeedsItem[];
+  /** The raw default-source setting (null when unset). */
+  defaultSetting: string | null;
 }
