@@ -165,7 +165,12 @@ export default function DataSourcesPage() {
                     {ds.assetCount.toLocaleString()} assets · {ds.productCount.toLocaleString()} products
                     {ds.unpricedProductCount > 0 && ` (${ds.unpricedProductCount} without a list price)`} · last updated {new Date(ds.updatedAt).toLocaleString()}
                   </p>
-                  <p className="text-xs text-muted-foreground truncate">Source: {ds.sourceFiles.join(" + ")}</p>
+                  <p className="text-xs text-muted-foreground truncate">Source: {ds.sourceFiles.length ? ds.sourceFiles.join(" + ") : "unknown"}</p>
+                  {ds.warning && (
+                    <p className="mt-1 text-xs text-warning-foreground flex items-center gap-1" data-testid={`warning-${ds.id}`}>
+                      <AlertTriangle className="w-3.5 h-3.5 flex-shrink-0" /> {ds.warning}
+                    </p>
+                  )}
 
                   <div className="mt-3 flex flex-col sm:flex-row sm:items-start gap-3 rounded-lg border border-border/60 bg-surface p-3" data-testid={`profile-${ds.id}`}>
                     {ds.quoteProfile.hasLogo ? (

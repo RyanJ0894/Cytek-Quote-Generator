@@ -163,10 +163,10 @@ export function quoteProfileStatus(profile: QuoteProfile | null): QuoteProfileSt
   if (!profile) return { complete: false, missing: ["Company name", "Street address", "City, state and ZIP", "Phone", "Email"] };
   const missing: string[] = [];
   if (!profile.companyName) missing.push("Company name");
-  if (!profile.address.street) missing.push("Street address");
-  if (!profile.address.cityStateZip) missing.push("City, state and ZIP");
-  if (!profile.contact.phone) missing.push("Phone");
-  if (!profile.contact.email) missing.push("Email");
+  if (!profile.address?.street) missing.push("Street address");
+  if (!profile.address?.cityStateZip) missing.push("City, state and ZIP");
+  if (!profile.contact?.phone) missing.push("Phone");
+  if (!profile.contact?.email) missing.push("Email");
   return { complete: missing.length === 0, missing };
 }
 
@@ -211,8 +211,9 @@ export interface QuoteProfileSummary {
  */
 export function termsConfigured(profile: QuoteProfile | null): boolean {
   if (!profile) return false;
-  const t = profile.termsAndConditions;
-  return !!t.intro.trim() || t.sections.some((s) => s.heading.trim() || s.body.trim());
+  const t = profile.termsAndConditions ?? EMPTY_PROFILE.termsAndConditions;
+  const sections = Array.isArray(t.sections) ? t.sections : [];
+  return !!(t.intro ?? "").trim() || sections.some((s) => (s?.heading ?? "").trim() || (s?.body ?? "").trim());
 }
 
 export function summarizeQuoteProfile(profile: QuoteProfile | null): QuoteProfileSummary {
@@ -220,13 +221,13 @@ export function summarizeQuoteProfile(profile: QuoteProfile | null): QuoteProfil
   return {
     companyName: profile?.companyName ?? "",
     shortName: profile?.shortName ?? "",
-    addressLine: profile ? [profile.address.street, profile.address.cityStateZip].filter(Boolean).join(", ") : "",
-    phone: profile?.contact.phone ?? "",
-    email: profile?.contact.email ?? "",
-    website: profile?.contact.website ?? "",
+    addressLine: profile ? [profile.address?.street, profile.address?.cityStateZip].filter(Boolean).join(", ") : "",
+    phone: profile?.contact?.phone ?? "",
+    email: profile?.contact?.email ?? "",
+    website: profile?.contact?.website ?? "",
     hasLogo: !!profile?.logo,
     hasTerms: termsConfigured(profile),
-    termsSectionCount: profile?.termsAndConditions.sections.length ?? 0,
+    termsSectionCount: Array.isArray(profile?.termsAndConditions?.sections) ? profile!.termsAndConditions.sections.length : 0,
     ...status,
   };
 }

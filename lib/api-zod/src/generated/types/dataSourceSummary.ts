@@ -19,4 +19,6 @@ export interface DataSourceSummary {
   assetCount: number;
   productCount: number;
   unpricedProductCount: number;
+  /** Present when the stored record was malformed and had to be repaired or defaulted for display. */
+  warning?: string;
 }
