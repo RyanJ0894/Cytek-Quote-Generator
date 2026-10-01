@@ -60,3 +60,4 @@ Thumbs.db
 
 # Vercel CLI local project link / build output
 .vercel
+.claude/settings.local.json
